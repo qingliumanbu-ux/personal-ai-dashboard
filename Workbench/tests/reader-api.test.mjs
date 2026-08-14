@@ -10,7 +10,7 @@ import { createServer as createViteServer } from "vite";
 import { buildVaultIndex } from "../server/vault-index.mjs";
 import { workbenchApiPlugin } from "../server/vite-plugin-workbench.mjs";
 
-async function startFixture(t, { readerExplanationService = null } = {}) {
+async function startFixture(t, { readerExplanationService = null, readOnly = false } = {}) {
   const vaultRoot = await mkdtemp(path.join(os.tmpdir(), "workbench-reader-api-"));
   await mkdir(path.join(vaultRoot, "10_raw", "articles"), { recursive: true });
   await mkdir(path.join(vaultRoot, "10_raw", "articles", "imgs"), { recursive: true });
@@ -39,7 +39,7 @@ async function startFixture(t, { readerExplanationService = null } = {}) {
     configFile: false,
     logLevel: "silent",
     server: { middlewareMode: true },
-    plugins: [workbenchApiPlugin({ vaultRoot, readerExplanationService })],
+    plugins: [workbenchApiPlugin({ vaultRoot, readerExplanationService, readOnly })],
   });
   const server = http.createServer(vite.middlewares);
   await new Promise((resolve, reject) => {
@@ -202,6 +202,29 @@ test("local mutation endpoints reject cross-site and form-style requests", async
   );
   const payload = await notesResponse.json();
   assert.deepEqual(payload.notes, []);
+});
+
+test("read-only mode keeps index reads available and rejects Vault mutations", async (t) => {
+  const { origin, source } = await startFixture(t, { readOnly: true });
+
+  const overview = await fetch(`${origin}/api/overview`);
+  assert.equal(overview.status, 200);
+
+  const mutation = await fetch(`${origin}/api/reader-notes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      documentId: source.id,
+      note: { type: "free", body: "不应写入只读 Vault" },
+    }),
+  });
+  assert.equal(mutation.status, 403);
+  assert.equal((await mutation.json()).error.code, "READ_ONLY_MODE");
+
+  const notesResponse = await fetch(
+    `${origin}/api/reader-notes?documentId=${encodeURIComponent(source.id)}`,
+  );
+  assert.deepEqual((await notesResponse.json()).notes, []);
 });
 
 test("reader explanation API rereads the document and saves an idempotent AI-attributed note", async (t) => {

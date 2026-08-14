@@ -29,14 +29,18 @@ function folderId(relativePath) {
   return Buffer.from(relativePath, "utf8").toString("base64url");
 }
 
-function normalizedFolderPath(value = MATERIAL_ROOT) {
-  const input = String(value || MATERIAL_ROOT).normalize("NFC").trim();
+function materialRoot(index) {
+  return index?.layout?.roots?.raw || MATERIAL_ROOT;
+}
+
+function normalizedFolderPath(value, root = MATERIAL_ROOT) {
+  const input = String(value || root).normalize("NFC").trim();
   if (
     path.posix.isAbsolute(input) ||
     input.includes("\\") ||
     input.includes("\0") ||
     input.split("/").some((segment) => !segment || segment === "." || segment === "..") ||
-    (input !== MATERIAL_ROOT && !input.startsWith(`${MATERIAL_ROOT}/`))
+    (input !== root && !input.startsWith(`${root}/`))
   ) {
     throw new MaterialsError("INVALID_MATERIAL_FOLDER", "素材目录路径无效。");
   }
@@ -82,26 +86,27 @@ function decorateDocument(document, maps) {
 }
 
 function rawDocuments(index, readingState) {
+  const root = materialRoot(index);
   const maps = queueMaps(readingState);
   return (index?.documents ?? [])
     .filter(
       (item) =>
         item.layer === "raw" &&
-        !item.path.startsWith("10_raw/books/") &&
-        !item.path.startsWith("10_raw/social-insights/") &&
+        !item.path.startsWith(`${root}/books/`) &&
+        !item.path.startsWith(`${root}/social-insights/`) &&
         !item.path.split("/").some((segment) => segment.startsWith(".")),
     )
     .map((item) => decorateDocument(item, maps));
 }
 
-function createFolder(relativePath) {
+function createFolder(relativePath, root = MATERIAL_ROOT) {
   return {
     id: folderId(relativePath),
     relativePath,
     name: path.posix.basename(relativePath),
-    displayName: relativePath === MATERIAL_ROOT ? "素材" : displayNameFor(relativePath),
-    parentPath: relativePath === MATERIAL_ROOT ? null : path.posix.dirname(relativePath),
-    depth: relativePath === MATERIAL_ROOT ? 0 : relativePath.split("/").length - 1,
+    displayName: relativePath === root ? "素材" : displayNameFor(relativePath),
+    parentPath: relativePath === root ? null : path.posix.dirname(relativePath),
+    depth: relativePath === root ? 0 : relativePath.split("/").length - 1,
     directFiles: [],
     childPaths: new Set(),
     descendantFileCount: 0,
@@ -111,21 +116,22 @@ function createFolder(relativePath) {
 }
 
 export function buildMaterialFolderIndex(index, readingState = { items: [] }) {
+  const root = materialRoot(index);
   const documents = rawDocuments(index, readingState);
-  const folders = new Map([[MATERIAL_ROOT, createFolder(MATERIAL_ROOT)]]);
+  const folders = new Map([[root, createFolder(root, root)]]);
 
   function ensureFolder(relativePath) {
-    const normalized = normalizedFolderPath(relativePath);
-    if (!folders.has(normalized)) folders.set(normalized, createFolder(normalized));
+    const normalized = normalizedFolderPath(relativePath, root);
+    if (!folders.has(normalized)) folders.set(normalized, createFolder(normalized, root));
     return folders.get(normalized);
   }
 
   for (const document of documents) {
     const parentPath = path.posix.dirname(document.path);
-    const relativeParts = parentPath === MATERIAL_ROOT
+    const relativeParts = parentPath === root
       ? []
-      : parentPath.slice(`${MATERIAL_ROOT}/`.length).split("/");
-    let currentPath = MATERIAL_ROOT;
+      : parentPath.slice(`${root}/`.length).split("/");
+    let currentPath = root;
     ensureFolder(currentPath);
     for (const part of relativeParts) {
       const nextPath = `${currentPath}/${part}`;
@@ -136,14 +142,14 @@ export function buildMaterialFolderIndex(index, readingState = { items: [] }) {
     ensureFolder(parentPath).directFiles.push(document);
 
     let aggregatePath = parentPath;
-    while (aggregatePath === MATERIAL_ROOT || aggregatePath.startsWith(`${MATERIAL_ROOT}/`)) {
+    while (aggregatePath === root || aggregatePath.startsWith(`${root}/`)) {
       const folder = ensureFolder(aggregatePath);
       folder.descendantFileCount += 1;
       if (document.isQueued) folder.queuedCount += 1;
       if (updatedTime(document.updatedAt) > updatedTime(folder.updatedAt)) {
         folder.updatedAt = document.updatedAt;
       }
-      if (aggregatePath === MATERIAL_ROOT) break;
+      if (aggregatePath === root) break;
       aggregatePath = path.posix.dirname(aggregatePath);
     }
   }
@@ -209,8 +215,9 @@ function queuePayload(folderIndex, readingState) {
 }
 
 export function materialsHomePayload(index, readingState = { items: [] }) {
+  const rootPath = materialRoot(index);
   const folderIndex = buildMaterialFolderIndex(index, readingState);
-  const root = folderIndex.folders.get(MATERIAL_ROOT);
+  const root = folderIndex.folders.get(rootPath);
   const queue = queuePayload(folderIndex, readingState);
   return {
     generatedAt: index.generatedAt,
@@ -227,7 +234,8 @@ export function materialsHomePayload(index, readingState = { items: [] }) {
 }
 
 export function materialFolderPayload(index, readingState, requestedPath) {
-  const relativePath = normalizedFolderPath(requestedPath);
+  const root = materialRoot(index);
+  const relativePath = normalizedFolderPath(requestedPath, root);
   const folderIndex = buildMaterialFolderIndex(index, readingState);
   const folder = folderIndex.folders.get(relativePath);
   if (!folder) {
@@ -235,14 +243,14 @@ export function materialFolderPayload(index, readingState, requestedPath) {
   }
   const breadcrumbs = [];
   let cursor = relativePath;
-  while (cursor === MATERIAL_ROOT || cursor.startsWith(`${MATERIAL_ROOT}/`)) {
-    const item = folderIndex.folders.get(cursor) ?? createFolder(cursor);
+  while (cursor === root || cursor.startsWith(`${root}/`)) {
+    const item = folderIndex.folders.get(cursor) ?? createFolder(cursor, root);
     breadcrumbs.unshift({
       id: item.id,
       relativePath: cursor,
       displayName: item.displayName,
     });
-    if (cursor === MATERIAL_ROOT) break;
+    if (cursor === root) break;
     cursor = path.posix.dirname(cursor);
   }
   return {
@@ -260,6 +268,7 @@ export function materialFolderPayload(index, readingState, requestedPath) {
 export function materialReadingQueuePayload(index, readingState = { items: [] }) {
   const folderIndex = buildMaterialFolderIndex(index, readingState);
   return {
+    root: { relativePath: materialRoot(index) },
     updatedAt: readingState.updatedAt ?? null,
     total: readingState.items?.length ?? 0,
     items: queuePayload(folderIndex, readingState),

@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  buildVaultIndex,
   getDocument,
   searchIndex,
 } from "./vault-index.mjs";
@@ -207,6 +208,7 @@ function errorPayload(error) {
 
 function errorStatus(error) {
   const code = error?.code;
+  if (code === "READ_ONLY_MODE") return 403;
   if (code === "LOCAL_API_ORIGIN_DENIED") return 403;
   if (code === "UNSUPPORTED_MEDIA_TYPE") return 415;
   if (
@@ -319,6 +321,18 @@ function assertLocalMutationRequest(req) {
     error.code = "UNSUPPORTED_MEDIA_TYPE";
     throw error;
   }
+}
+
+function assertWritableApiRequest(req, url, readOnly) {
+  if (!readOnly || !["POST", "PUT", "PATCH", "DELETE"].includes(req.method || "")) {
+    return;
+  }
+  if (req.method === "POST" && ["/api/refresh", "/api/open"].includes(url.pathname)) {
+    return;
+  }
+  const error = new Error("当前 Dashboard 以只读模式连接 Vault，已拒绝写入请求。");
+  error.code = "READ_ONLY_MODE";
+  throw error;
 }
 
 function assertAllowedObjectKeys(value, allowedKeys, code = "INVALID_READER_EXPLANATION_REQUEST") {
@@ -775,6 +789,8 @@ function openLocalDocument(vaultRoot, document, target) {
 
 export function workbenchApiPlugin({
   vaultRoot = defaultVaultRoot,
+  layoutId = "dashboard-v1",
+  readOnly = false,
   readerExplanationService = null,
 } = {}) {
   let readerNoteApiMutationQueue = Promise.resolve();
@@ -783,7 +799,10 @@ export function workbenchApiPlugin({
   const wikiIngest = createWikiIngestRunner({ vaultRoot });
   const readerExplanations = readerExplanationService ??
     createReaderExplanationsService({ vaultRoot });
-  const vaultSync = createVaultSyncService({ vaultRoot });
+  const vaultSync = createVaultSyncService({
+    vaultRoot,
+    buildIndex: (root) => buildVaultIndex(root, { layoutId }),
+  });
   const currentIndex = () => vaultSync.currentIndex();
   const refreshIndex = (options = {}) => vaultSync.refresh({
     reason: "manual",
@@ -959,6 +978,7 @@ export function workbenchApiPlugin({
 
         try {
           assertLocalMutationRequest(req);
+          assertWritableApiRequest(req, url, readOnly);
           if (
             url.pathname.startsWith("/api/brainstorm/") ||
             url.pathname === "/api/public-account/dashboard"

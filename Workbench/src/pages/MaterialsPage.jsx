@@ -67,10 +67,11 @@ export function MaterialsPage({ onOpenDocument }) {
   const [queuedOnly, setQueuedOnly] = useState(false);
   const [pendingIds, setPendingIds] = useState(() => new Set());
   const [mutationError, setMutationError] = useState(null);
-  const folderPath = searchParams.get("folder") || ROOT_PATH;
+  const [rootPath, setRootPath] = useState(ROOT_PATH);
+  const folderPath = searchParams.get("folder") || rootPath;
   const view = searchParams.get("view") === "queue"
     ? "queue"
-    : folderPath === ROOT_PATH
+    : folderPath === rootPath
       ? "home"
       : "folder";
 
@@ -81,6 +82,9 @@ export function MaterialsPage({ onOpenDocument }) {
       : view === "folder"
         ? await loadMaterialFolder(folderPath)
         : await loadMaterialsHome();
+    const nextRootPath = response.data?.root?.relativePath ??
+      response.data?.breadcrumbs?.[0]?.relativePath;
+    if (nextRootPath) setRootPath(nextRootPath);
     setResult(response);
   }, [folderPath, view]);
 
@@ -93,7 +97,12 @@ export function MaterialsPage({ onOpenDocument }) {
         : view === "folder"
           ? await loadMaterialFolder(folderPath)
           : await loadMaterialsHome();
-      if (!cancelled) setResult(response);
+      if (!cancelled) {
+        const nextRootPath = response.data?.root?.relativePath ??
+          response.data?.breadcrumbs?.[0]?.relativePath;
+        if (nextRootPath) setRootPath(nextRootPath);
+        setResult(response);
+      }
     };
     load();
     return () => {
@@ -102,7 +111,7 @@ export function MaterialsPage({ onOpenDocument }) {
   }, [folderPath, view]);
 
   const openFolder = (path) => {
-    setSearchParams(path === ROOT_PATH ? {} : { folder: path });
+    setSearchParams(path === rootPath ? {} : { folder: path });
     setQuery("");
     setQueuedOnly(false);
   };
@@ -181,7 +190,7 @@ export function MaterialsPage({ onOpenDocument }) {
 
       {!isHome ? (
         <nav aria-label="素材路径" className="materials-breadcrumbs">
-          <button onClick={() => openFolder(ROOT_PATH)} type="button">素材</button>
+          <button onClick={() => openFolder(rootPath)} type="button">素材</button>
           {isQueue ? (
             <>
               <IconChevronRight aria-hidden="true" size={14} />
@@ -266,7 +275,7 @@ export function MaterialsPage({ onOpenDocument }) {
                 <span className="eyebrow">REAL FOLDERS</span>
                 <h2>按文件夹浏览</h2>
               </div>
-              <span className="materials-section__meta mono">10_raw/ · {folders.length} folders</span>
+              <span className="materials-section__meta mono">{rootPath}/ · {folders.length} folders</span>
             </div>
             {folders.length > 0 ? (
               <div className="material-folder-grid">

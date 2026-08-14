@@ -159,6 +159,7 @@ test("returns the reading queue in queued order with state metadata", () => {
   const payload = materialReadingQueuePayload(fixtureIndex(), readingState());
 
   assert.equal(payload.updatedAt, "2026-07-27T09:00:00.000Z");
+  assert.equal(payload.root.relativePath, "10_raw");
   assert.equal(payload.total, 2);
   assert.deepEqual(payload.items.map((item) => item.id), ["doc-2", "missing-doc"]);
   assert.equal(payload.items[0].queuedAt, "2026-07-27T07:00:00.000Z");
@@ -181,4 +182,26 @@ test("rejects traversal, non-material roots, and missing folders", () => {
     () => materialFolderPayload(fixtureIndex(), readingState(), "10_raw/empty"),
     (error) => error instanceof MaterialsError && error.code === "MATERIAL_FOLDER_NOT_FOUND",
   );
+});
+
+test("uses the configured personal Vault source root without copying files", () => {
+  const index = {
+    generatedAt: "2026-08-14T00:00:00.000Z",
+    layout: {
+      id: "personal-ai-vault-v1",
+      roots: { raw: "04-来源资料" },
+    },
+    documents: [
+      document({
+        path: "04-来源资料/视频/真实来源.md",
+        section: "视频",
+      }),
+    ],
+  };
+
+  const payload = materialsHomePayload(index);
+
+  assert.equal(payload.root.relativePath, "04-来源资料");
+  assert.equal(payload.total, 1);
+  assert.equal(payload.recent[0].path, "04-来源资料/视频/真实来源.md");
 });

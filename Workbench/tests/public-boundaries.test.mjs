@@ -42,3 +42,32 @@ test("demo mode only activates through the explicit marker", async (t) => {
   );
   assert.equal((await buildVaultIndex(vaultRoot)).demoMode, true);
 });
+
+test("personal AI Vault layout maps existing source, candidate, and formal knowledge roots", async (t) => {
+  const vaultRoot = await fs.mkdtemp(path.join(os.tmpdir(), "personal-ai-vault-layout-"));
+  t.after(() => fs.rm(vaultRoot, { recursive: true, force: true }));
+
+  await Promise.all([
+    fs.mkdir(path.join(vaultRoot, "04-来源资料", "视频"), { recursive: true }),
+    fs.mkdir(path.join(vaultRoot, "05-候选知识"), { recursive: true }),
+    fs.mkdir(path.join(vaultRoot, "06-正式知识"), { recursive: true }),
+  ]);
+  await Promise.all([
+    fs.writeFile(path.join(vaultRoot, "04-来源资料", "视频", "来源.md"), "# 来源\n"),
+    fs.writeFile(path.join(vaultRoot, "05-候选知识", "候选.md"), "# 候选\n"),
+    fs.writeFile(path.join(vaultRoot, "06-正式知识", "正式知识.md"), "# 正式知识\n"),
+  ]);
+
+  const index = await buildVaultIndex(vaultRoot, {
+    layoutId: "personal-ai-vault-v1",
+  });
+
+  assert.equal(index.layout.id, "personal-ai-vault-v1");
+  assert.equal(index.layout.roots.raw, "04-来源资料");
+  assert.equal(index.stats.rawFiles, 1);
+  assert.equal(index.stats.formalWikiPages, 1);
+  assert.equal(
+    index.documents.find((document) => document.path === "05-候选知识/候选.md")?.layer,
+    "candidate",
+  );
+});

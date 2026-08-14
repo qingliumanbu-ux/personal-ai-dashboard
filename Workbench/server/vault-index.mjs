@@ -2,6 +2,8 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import XLSX from "xlsx";
 
+import { createVaultLayout } from "./vault-layout.mjs";
+
 const INTERNAL_CONTENT = Symbol("vaultDocumentContent");
 const INTERNAL_DOCUMENT_MAP = Symbol("vaultDocumentMap");
 const INTERNAL_VAULT_ROOT = Symbol("vaultRoot");
@@ -33,19 +35,6 @@ function isPublicHiddenPath(relativePath) {
     (prefix) => normalized === prefix || normalized.startsWith(`${prefix}/`),
   );
 }
-
-const FORMAL_WIKI_SECTIONS = new Set([
-  "analyses",
-  "cases",
-  "comparisons",
-  "concepts",
-  "conflicts",
-  "diagnoses",
-  "frameworks",
-  "questions",
-  "sources",
-  "topics",
-]);
 
 const SUMMARY_FIELD_MAP = {
   作品数: "workCount",
@@ -468,57 +457,6 @@ function parseMarkdown(text) {
   };
 }
 
-function classifyDocument(relativePath) {
-  const parts = relativePath.split("/");
-  const top = parts[0] || "";
-  const section = parts.length > 2 ? parts[1] : null;
-
-  if (top === "Brainstorm") {
-    const fileName = parts.at(-1) || "";
-    const kind = relativePath === "Brainstorm/使用手册.md"
-      ? "brainstorm-manual"
-      : fileName === "brainstorm.md"
-        ? "brainstorm-session"
-        : fileName === "knowledge-delta.md"
-          ? "knowledge-delta"
-          : fileName === "wiki-writeback-plan.md"
-            ? "wiki-writeback-plan"
-            : "brainstorm-artifact";
-    return { layer: "brainstorm", section, kind };
-  }
-
-  if (top === "10_raw") {
-    return { layer: "raw", section, kind: "material" };
-  }
-  if (top === "40_topics") {
-    return { layer: "topics", section, kind: "topic" };
-  }
-  if (top === "50_scripts") {
-    return {
-      layer: "scripts",
-      section,
-      kind: "script",
-    };
-  }
-  if (top === "90_runs") {
-    return { layer: "runs", section, kind: "run" };
-  }
-  if (top === "wiki") {
-    return {
-      layer: "wiki",
-      section,
-      kind: FORMAL_WIKI_SECTIONS.has(section)
-        ? "knowledge"
-        : section === "templates"
-          ? "template"
-          : section === "usage"
-            ? "usage"
-            : "wiki-system",
-    };
-  }
-  return { layer: "other", section: top || null, kind: "file" };
-}
-
 function extensionOf(relativePath) {
   const extension = path.posix.extname(relativePath).toLowerCase();
   return extension ? extension.slice(1) : null;
@@ -606,7 +544,7 @@ async function collectFiles(vaultRoot, errors) {
   return files;
 }
 
-async function buildDocument(file, vaultRoot, errors) {
+async function buildDocument(file, vaultRoot, errors, layout) {
   let stats;
   try {
     stats = await fs.stat(file.absolutePath);
@@ -616,7 +554,7 @@ async function buildDocument(file, vaultRoot, errors) {
   }
 
   const extension = extensionOf(file.relativePath);
-  const classification = classifyDocument(file.relativePath);
+  const classification = layout.classify(file.relativePath);
   const fallbackTitle =
     path.posix.basename(file.relativePath, path.posix.extname(file.relativePath)) ||
     file.relativePath;
@@ -2707,12 +2645,13 @@ function publicDocument(document) {
  * @param {string} vaultRoot Absolute path to the Vault root.
  * @returns {Promise<object>}
  */
-export async function buildVaultIndex(vaultRoot) {
+export async function buildVaultIndex(vaultRoot, { layoutId = "dashboard-v1" } = {}) {
   if (!vaultRoot || typeof vaultRoot !== "string") {
     throw new TypeError("vaultRoot must be a non-empty string");
   }
 
   const resolvedRoot = path.resolve(vaultRoot);
+  const layout = createVaultLayout(layoutId);
   const rootStats = await fs.stat(resolvedRoot);
   if (!rootStats.isDirectory()) {
     throw new TypeError("vaultRoot must point to a directory");
@@ -2734,7 +2673,7 @@ export async function buildVaultIndex(vaultRoot) {
 
   for (const file of files) {
     try {
-      const document = await buildDocument(file, resolvedRoot, errors);
+      const document = await buildDocument(file, resolvedRoot, errors, layout);
       if (document) documents.push(document);
     } catch (error) {
       errors.push(makeError(file.relativePath, error, "PARSE_FAILED"));
@@ -2853,6 +2792,7 @@ export async function buildVaultIndex(vaultRoot) {
   const index = {
     generatedAt: new Date().toISOString(),
     demoMode,
+    layout: layout.summary(),
     stats: {
       documents: documents.length,
       rawFiles: rawDocuments.length,
