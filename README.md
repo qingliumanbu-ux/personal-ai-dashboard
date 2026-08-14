@@ -1,17 +1,17 @@
 <p align="center">
-  <img src="./docs/images/readme/hero.svg" width="100%" alt="Personal AI Workbench：一个本地优先、Agent 可调用的个人知识工作台。">
+  <img src="./docs/images/readme/hero.svg" width="100%" alt="Personal AI Dashboard：一个本地优先、Agent 可调用的个人知识工作台。">
 </p>
 
 # Personal AI Knowledge Workspace
 
-一个本地优先、可被 AI Agent 调用并持续维护的个人知识库，以及它的可视化 Workbench。
+一个本地优先、可被 AI Agent 调用并持续维护的个人知识库，以及它的统一 Dashboard。
 
-它把 Raw 素材、Wiki 知识、阅读、灵感、内容生产、社媒研究和账号数据放进一套可读的 Markdown 目录中；Workbench 负责索引、搜索、阅读和图表展示。公开仓库只包含 synthetic demo，不包含作者的真实知识库或账号数据。
+它把 Raw 素材、Wiki 知识、阅读、灵感、内容生产、社媒研究和账号数据放进一套可读的 Markdown 目录中；Dashboard 负责采集审核、索引、搜索、阅读和图表展示。公开仓库只包含 synthetic demo，不包含作者的真实知识库或账号数据。
 
 ## 能做什么
 
 - 用 Markdown 和 Obsidian 管理个人知识库，不绑定专有数据库。
-- 在 Workbench 中查看 Raw、Wiki、知识关系、书架、灵感和内容状态。
+- 在 Dashboard 中采集审核来源，并查看 Raw、Wiki、知识关系、书架、灵感和内容状态。
 - 展示脱敏的近期社媒风向与主题研究报告。
 - 展示本人抖音创作者中心的作品、账号趋势、合集、留存和观众分析数据。
 - 将需要推理或登录态的任务交给用户自己的 Codex、Claude Code 或其他 Agent。
@@ -20,10 +20,10 @@
 ## 界面预览
 
 <p align="center">
-  <img src="./docs/images/readme/showcase.png" width="100%" alt="Personal AI Workbench 功能总览：总览、每日热点、社媒洞察与抖音数据页面的层叠预览。">
+  <img src="./docs/images/readme/showcase.png" width="100%" alt="Personal AI Dashboard 功能总览：总览、每日热点、社媒洞察与抖音数据页面的层叠预览。">
 </p>
 
-主图展示 Workbench 的核心浏览路径。总览、社媒洞察与抖音账号数据均使用仓库内明确标注的 synthetic demo；每日热点来自截图时的公开匿名 API。
+主图展示 Dashboard 的核心浏览路径。总览、社媒洞察与抖音账号数据均使用仓库内明确标注的 synthetic demo；每日热点来自截图时的公开匿名 API。
 
 ### 社媒洞察
 
@@ -69,7 +69,7 @@ npm run dev
 
 仓库默认读取旁边的 `个人知识库/`，这既是一套 synthetic demo，也是一份前台数据契约示例。把环境变量指向另一个 Vault，并不代表任意目录都能自动匹配当前页面。
 
-Workbench 的每个页面都期待特定的目录、字段和数据含义。接入自己的知识库前，需要先让 Agent 理解前台展示什么、服务端如何索引、现有模板要求哪些字段，再建立你的数据与这些接口之间的映射。字段或口径对不上时，页面应保持缺失，不能用 `0` 或虚构数据顶替。
+Dashboard 的每个页面都期待特定的目录、字段和数据含义。接入自己的知识库前，需要先让 Agent 理解前台展示什么、服务端如何索引、现有模板要求哪些字段，再建立你的数据与这些接口之间的映射。字段或口径对不上时，页面应保持缺失，不能用 `0` 或虚构数据顶替。
 
 你不需要手动编写适配代码。先告诉 Agent：
 
@@ -81,7 +81,7 @@ Workbench 的每个页面都期待特定的目录、字段和数据含义。接�
 然后让 Agent 完成接口梳理、字段映射、数据转换、配置和验证。例如：
 
 ```text
-我想把自己的知识库接入这个 Workbench。
+我想把自己的知识库接入这个 Dashboard。
 请先阅读前台页面、服务端索引逻辑和数据模板，列出每个页面需要的数据契约；
 再检查我的知识库结构，设计一层映射或转换，不要直接猜字段，也不要用虚构数据补空值。
 完成后设置 PERSONAL_DASHBOARD_VAULT_ROOT，并运行测试、构建和隐私扫描。
@@ -106,7 +106,7 @@ Workbench 的每个页面都期待特定的目录、字段和数据含义。接�
 
 ### 抖音账号数据如何工作
 
-抖音 Skill 只处理用户本人有权访问的创作者中心。Agent 在已授权的页面中模拟正常的页面切换与按钮点击，下载平台提供的官方 Excel，再用页面可见信息补充 Excel 未覆盖的少量字段。下载文件经过解析、一致性检查和质量门禁后，才会生成 Workbench 使用的 `current.json`。
+抖音 Skill 只处理用户本人有权访问的创作者中心。Agent 在已授权的页面中模拟正常的页面切换与按钮点击，下载平台提供的官方 Excel，再用页面可见信息补充 Excel 未覆盖的少量字段。下载文件经过解析、一致性检查和质量门禁后，才会生成 Dashboard 使用的 `current.json`。
 
 这套流程不调用抖音开放 API，不抓取其他账号，不读取私信，也不提供内容策略。详细的数据范围、临时文件清理、失败回滚和平台支持说明，请查看 [`douyin-account-data`](https://github.com/oyorf/personal-workbench-skills/tree/main/skills/douyin-account-data)。
 
@@ -120,14 +120,14 @@ Workbench 的每个页面都期待特定的目录、字段和数据含义。接�
 
 `个人知识库/` 中的文章、书籍、风向快照、作品标题、账号指标和时间序列全部是从零编写的 synthetic demo，不来自任何真实个人或账号。
 
-公开前在 Workbench 中执行：
+公开前在 Dashboard 前端目录中执行：
 
 ```bash
 npm test
 npm run privacy:scan
 ```
 
-隐私扫描覆盖整个仓库，包括与 Workbench 并列的 `个人知识库/`。
+隐私扫描覆盖整个仓库，包括与前端代码目录并列的 `个人知识库/`。
 
 ## 开发验证
 

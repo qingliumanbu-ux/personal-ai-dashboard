@@ -47,6 +47,7 @@ import {
 } from "./wiki-ingest-runner.mjs";
 import { createVaultSyncService } from "./vault-sync.mjs";
 import { loadAttentionStrategy } from "./public-config.mjs";
+import { isIngestionProxyPath } from "./ingestion-proxy.mjs";
 
 const workbenchRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const defaultVaultRoot = path.resolve(
@@ -975,6 +976,7 @@ export function workbenchApiPlugin({
       server.middlewares.use(async (req, res, next) => {
         const url = new URL(req.url || "/", "http://127.0.0.1");
         if (!url.pathname.startsWith("/api/")) return next();
+        if (isIngestionProxyPath(url.pathname)) return next();
 
         try {
           assertLocalMutationRequest(req);

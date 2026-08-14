@@ -7,6 +7,7 @@ import {
   IconClipboardList,
   IconCommand,
   IconHome,
+  IconInbox,
   IconLibrary,
   IconMenu2,
   IconRadar2,
@@ -27,6 +28,9 @@ const primaryNavigation = [
   { to: "/materials", label: "素材层", icon: IconStack2 },
   { to: "/books", label: "书架", icon: IconBooks },
   { to: "/daily-hot", label: "每日热点", icon: IconRadar2 },
+  ...(localWorkbench
+    ? [{ to: "/ingestion", label: "采集与审核", icon: IconInbox }]
+    : []),
   ...(localWorkbench
     ? [{ to: "/social-insights", label: "社媒洞察", icon: IconSocial }]
     : []),
@@ -97,7 +101,7 @@ export function AppShell({ children, onOpenSearch, sync }) {
               <IconX aria-hidden="true" />
             </button>
           </div>
-          <div className="sidebar__tag">PERSONAL AI WORKBENCH</div>
+          <div className="sidebar__tag">PERSONAL AI DASHBOARD</div>
 
           <nav aria-label="主要导航" className="sidebar__nav">
             {primaryNavigation.map((item) => {

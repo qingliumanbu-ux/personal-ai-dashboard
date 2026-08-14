@@ -7,6 +7,7 @@ import { CollectionPage } from "./pages/CollectionPage";
 import { DouyinPage } from "./pages/DouyinPage";
 import { DailyHotPage } from "./pages/DailyHotPage";
 import { GraphPage } from "./pages/GraphPage";
+import { IngestionPage } from "./pages/IngestionPage";
 import { MaterialsPage } from "./pages/MaterialsPage";
 import { BooksPage } from "./pages/BooksPage";
 import { OverviewPage } from "./pages/OverviewPage";
@@ -94,6 +95,9 @@ export function App() {
           <Route path="/books" element={<BooksPage onOpenDocument={openDocument} />} />
           <Route path="/books/:bookId" element={<BooksPage onOpenDocument={openDocument} />} />
           <Route path="/daily-hot" element={<DailyHotPage />} />
+          {localWorkbench ? (
+            <Route path="/ingestion" element={<IngestionPage />} />
+          ) : null}
           {localWorkbench ? (
             <Route
               path="/social-insights"

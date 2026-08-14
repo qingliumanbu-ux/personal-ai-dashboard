@@ -1,5 +1,8 @@
 Workbench/node_modules/
 Workbench/dist/
+__pycache__/
+*.py[cod]
+.venv/
 qa/
 .DS_Store
 

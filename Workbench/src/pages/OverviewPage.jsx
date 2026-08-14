@@ -111,7 +111,7 @@ export function OverviewPage({ onOpenDocument }) {
             <DecryptedText
               active={liveDataReady}
               settleWithoutAnimation={overviewSettled && !liveDataReady}
-              text="PERSONAL AI WORKBENCH"
+              text="PERSONAL AI DASHBOARD"
             />
             <span aria-hidden="true">·</span>
             <span>{today}</span>

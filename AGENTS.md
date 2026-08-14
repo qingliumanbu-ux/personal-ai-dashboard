@@ -1,6 +1,6 @@
-# Personal AI Workbench public repository rules
+# Personal AI Dashboard public repository rules
 
-This repository is the public, privacy-safe edition of Personal AI Workbench.
+This repository is the public, privacy-safe edition of Personal AI Dashboard.
 
 ## Public data boundary
 
