@@ -632,11 +632,15 @@ test("migrates a completed v2 structured result to the single-answer contract", 
   await service.close();
 });
 
-test("rejects an explanation store directory that escapes the Vault through a symlink", async (t) => {
+test("rejects an explanation store directory that escapes the Vault through a directory link", async (t) => {
   const { root } = await fixture(t);
   const outside = await mkdtemp(path.join(os.tmpdir(), "reader-explanations-outside-"));
   t.after(() => rm(outside, { recursive: true, force: true }));
-  await symlink(outside, path.join(root, "state"));
+  await symlink(
+    outside,
+    path.join(root, "state"),
+    process.platform === "win32" ? "junction" : "dir",
+  );
   const service = makeService(
     root,
     path.join(root, "state", "reader-explanations.json"),
