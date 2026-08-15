@@ -210,7 +210,7 @@
     <div class="paw-title-row">
       <div>
         <h1>个人 AI 知识库与工作台 · V2.3</h1>
-        <p class="paw-subtitle">Dashboard 已成为唯一主界面，本地视频、抖音视频和公开网页共用同一采集审核出口。当前补齐厂商无关的 AI 候选摘要，再继续扩展其他资料类型。</p>
+        <p class="paw-subtitle">Dashboard 已成为唯一主界面，本地视频、抖音视频和公开网页共用同一采集审核出口。AI 候选摘要与公开网页真实验收已完成，当前进入抖音图文采集。</p>
       </div>
       <button type="button" class="btn btn-ghost" id="paw-reset" data-tooltip="清空本页保存的勾选进度">
         <i data-lucide="rotate-ccw" aria-hidden="true"></i> 重置进度
@@ -218,7 +218,7 @@
     </div>
 
     <div class="viz-grid paw-summary" aria-label="路线摘要">
-      <div class="card viz-stat"><span class="text-muted">当前基线</span><strong class="viz-stat-value">P1.3-C</strong><span class="text-small text-muted">补齐 AI 候选摘要与人工审核</span></div>
+      <div class="card viz-stat"><span class="text-muted">当前基线</span><strong class="viz-stat-value">P1.3-D</strong><span class="text-small text-muted">实现抖音图文采集与审核</span></div>
       <div class="card viz-stat"><span class="text-muted">路线阶段</span><strong class="viz-stat-value">6</strong><span class="text-small text-muted">已完成项与当前项分开标记</span></div>
       <div class="card viz-stat"><span class="text-muted">具体步骤</span><strong class="viz-stat-value" id="paw-total-steps">0</strong><span class="text-small text-muted">用户与系统职责分开</span></div>
       <div class="card viz-stat"><span class="text-muted">完成进度</span><strong class="viz-stat-value" id="paw-progress-value">0%</strong><span class="text-small text-muted" id="paw-progress-label">0 / 0</span></div>
@@ -394,7 +394,7 @@ D:\Personal-AI\
     <section class="paw-section" data-panel="roadmap" hidden>
       <div>
         <h2>V2.3 分阶段实施路线</h2>
-        <p class="paw-kicker">P1.2 已完成；抖音视频已完成真实闭环，网页能力待真实样本验收。当前先补齐 AI 候选摘要，再继续其他资料类型。</p>
+        <p class="paw-kicker">P1.2、AI 候选摘要和公开网页真实闭环已完成；抖音视频已完成真实闭环。当前补齐抖音图文采集，再继续其他资料类型。</p>
       </div>
       <div class="paw-phases" id="paw-phase-buttons" aria-label="选择实施阶段"></div>
       <div id="paw-phase-detail" aria-live="polite"></div>
@@ -863,7 +863,7 @@ D:\Personal-AI\
           ]
         },
         {
-          id: 'p13d', label: 'P1.3 · 抖音', title: '抖音视频与图文链接采集', period: '视频已完成，图文待后续', objective: '粘贴一条抖音分享链接，自动识别视频或图文，生成可审核候选；视频使用本地转写，图文保留必要图片。',
+          id: 'p13d', label: 'P1.3 · 抖音', title: '抖音视频与图文链接采集', period: '当前阶段：视频已完成，图文待实现', objective: '粘贴一条抖音分享链接，自动识别视频或图文，生成可审核候选；视频使用本地转写，图文保留必要图片。',
           deliverables: ['抖音链接入口', '受限解析与下载适配器', '本地转写路由', '临时视频保留策略'],
           stop: '不抓取收藏列表，不读取私信，不绕过登录或验证码，不上传音频到第三方，不未经审核直接写 Vault。',
           steps: [
@@ -877,7 +877,7 @@ D:\Personal-AI\
           ]
         },
         {
-          id: 'p13w', label: 'P1.3 · 网页', title: '公开网页正文提取与归档', period: '能力已实现，待真实样本验收', objective: '粘贴一个无需登录的网页链接，提取干净正文和来源元数据，形成可审核、可去重、可发布的 Raw 资料。',
+          id: 'p13w', label: 'P1.3 · 网页', title: '公开网页正文提取与归档', period: '已完成真实样本验收', objective: '粘贴一个无需登录的网页链接，提取干净正文和来源元数据，形成可审核、可去重、可发布的 Raw 资料。',
           deliverables: ['网页链接入口', '正文清洗适配器', '来源与引用元数据', '04-来源资料/网页 发布'],
           stop: '不绕过登录、验证码、付费墙和反爬，不把摘要当作原文，不静默抓取整站，不保存无关个人信息。',
           steps: [
@@ -890,7 +890,7 @@ D:\Personal-AI\
           ]
         },
         {
-          id: 'p13c', label: 'P1.3-C · AI 摘要', title: '厂商无关的候选摘要闭环', period: '当前阶段', objective: '在发布 Raw 前生成可审阅的摘要候选，同时保持完整原文、人工审核和模型可替换性。',
+          id: 'p13c', label: 'P1.3-C · AI 摘要', title: '厂商无关的候选摘要闭环', period: '已完成', objective: '在发布 Raw 前生成可审阅的摘要候选，同时保持完整原文、人工审核和模型可替换性。',
           deliverables: ['统一 SummaryProvider 合同', '标准摘要提示词', '粘贴与编辑界面', '摘要发布契约'],
           stop: '不把实现写死到 Codex；不自动把真实资料发给第三方；没有摘要时不伪造结果；摘要不能替代全文或直接成为正式知识。',
           steps: [

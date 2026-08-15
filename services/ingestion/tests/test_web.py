@@ -6,6 +6,7 @@ from pathlib import Path
 
 from app.queue import JobQueue
 from app.web import (
+    _extract_page_text,
     extract_shared_url,
     FetchedPage,
     InvalidWebSourceError,
@@ -31,6 +32,51 @@ class RecordingControl:
 
 
 class WebSourceTests(unittest.TestCase):
+    def test_extracts_article_without_surrounding_site_chrome(self) -> None:
+        title, text = _extract_page_text(
+            """
+            <html>
+              <head><title>Synthetic update - Example Community</title></head>
+              <body>
+                <header><nav>Home Products Search</nav></header>
+                <main>
+                  <section class="layout-main">
+                    <section class="col-article">
+                      <h1>Synthetic update</h1>
+                      <div class="article-infos">Source: Example Desk</div>
+                      <div class="article-content">
+                        <p>The first useful paragraph explains the change.</p>
+                        <p>The second useful paragraph records its impact.</p>
+                      </div>
+                      <ul class="article-source">
+                        <li>Published: 2026-08-15</li>
+                        <li>Original: https://example.com/original</li>
+                      </ul>
+                      <div class="share-operations">Share this article</div>
+                    </section>
+                    <ul class="sibling-articles"><li>Previous: unrelated story</li></ul>
+                    <section class="related-news">Related news item</section>
+                  </section>
+                </main>
+                <footer>Copyright Example Community</footer>
+              </body>
+            </html>
+            """,
+            "https://example.com/news/1",
+        )
+
+        self.assertEqual(title, "Synthetic update")
+        self.assertNotIn("Synthetic update", text)
+        self.assertIn("The first useful paragraph", text)
+        self.assertIn("Source: Example Desk", text)
+        self.assertIn("Published: 2026-08-15", text)
+        self.assertIn("Original: https://example.com/original", text)
+        self.assertNotIn("Home Products Search", text)
+        self.assertNotIn("Share this article", text)
+        self.assertNotIn("Previous: unrelated story", text)
+        self.assertNotIn("Related news item", text)
+        self.assertNotIn("Copyright Example Community", text)
+
     def test_extracts_the_first_public_url_from_shared_text(self) -> None:
         shared_text = (
             "4.20 复制打开抖音，看看【知识库示例】 "

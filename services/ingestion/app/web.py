@@ -66,7 +66,62 @@ _BLOCK_ELEMENTS = {
     "ul",
     "ol",
 }
-_IGNORED_ELEMENTS = {"script", "style", "noscript", "svg", "template"}
+_IGNORED_ELEMENTS = {
+    "aside",
+    "button",
+    "dialog",
+    "footer",
+    "form",
+    "nav",
+    "noscript",
+    "script",
+    "style",
+    "svg",
+    "template",
+}
+_VOID_ELEMENTS = {
+    "area",
+    "base",
+    "br",
+    "col",
+    "embed",
+    "hr",
+    "img",
+    "input",
+    "link",
+    "meta",
+    "source",
+    "track",
+    "wbr",
+}
+_NOISE_HINTS = {
+    "advert",
+    "advertisement",
+    "breadcrumb",
+    "comment",
+    "comments",
+    "cookie",
+    "menu",
+    "modal",
+    "navigation",
+    "operations",
+    "pagination",
+    "popup",
+    "recommend",
+    "related",
+    "report",
+    "share",
+    "sidebar",
+    "sibling",
+    "social",
+    "tags",
+    "toolbar",
+    "zoom",
+}
+_ARTICLE_HINTS = {"article", "entry", "post", "story"}
+_SECONDARY_CONTENT_HINTS = {"detail", "news"}
+_LIST_HINTS = {"list", "recommend", "related", "sibling"}
+_NON_BODY_HINTS = {"author", "byline", "info", "infos", "meta", "source", "title"}
 _SHARED_URL_PATTERN = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
 _TRAILING_SHARE_PUNCTUATION = ".,;:!?，。；：！？、）)]}】》」』"
 
@@ -240,59 +295,166 @@ class WebPageProvider:
         return ProviderResult(artifacts=artifacts, log_path=None)
 
 
+@dataclass
+class _TextCandidate:
+    tag: str
+    depth: int
+    priority: int
+    parts: list[str]
+    heading_parts: list[str]
+
+
+def _attribute_tokens(attrs) -> set[str]:
+    values = " ".join(
+        value for name, value in attrs if name in {"class", "id", "role"} and value
+    )
+    return {token for token in re.split(r"[^a-z0-9]+", values.casefold()) if token}
+
+
+def _candidate_priority(tag: str, attrs) -> int:
+    tokens = _attribute_tokens(attrs)
+    if tokens & _LIST_HINTS or (
+        tokens & _NON_BODY_HINTS and not tokens & {"body", "content", "main"}
+    ):
+        return 0
+    if tag == "article":
+        return 4
+    if tokens & _ARTICLE_HINTS:
+        return 3
+    if "content" in tokens and tokens & _SECONDARY_CONTENT_HINTS:
+        return 2
+    if tag == "main" or "main" in tokens:
+        return 1
+    return 0
+
+
+def _is_noise_element(tag: str, attrs) -> bool:
+    return tag in _IGNORED_ELEMENTS or bool(_attribute_tokens(attrs) & _NOISE_HINTS)
+
+
+def _normalized_lines(parts: list[str]) -> list[str]:
+    lines = []
+    for block in "".join(parts).splitlines():
+        normalized = re.sub(r"\s+", " ", block).strip()
+        if normalized and (not lines or normalized != lines[-1]):
+            lines.append(normalized)
+    return lines
+
+
 class _VisibleTextParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
-        self.ignored_depth = 0
+        self.depth = 0
+        self.suppressed_depth: int | None = None
         self.in_title = False
         self.title_parts: list[str] = []
         self.parts: list[str] = []
+        self.heading_depth: int | None = None
+        self.heading_parts: list[str] = []
+        self.capture_document_heading = False
+        self.heading_targets: list[_TextCandidate] = []
+        self.candidates: list[_TextCandidate] = []
+        self.active_candidates: list[_TextCandidate] = []
+
+    def _append(self, value: str) -> None:
+        self.parts.append(value)
+        for candidate in self.active_candidates:
+            candidate.parts.append(value)
 
     def handle_starttag(self, tag: str, attrs) -> None:
         tag = tag.lower()
-        if tag in _IGNORED_ELEMENTS:
-            self.ignored_depth += 1
+        is_void = tag in _VOID_ELEMENTS
+        if not is_void:
+            self.depth += 1
+        if self.suppressed_depth is not None:
             return
-        if self.ignored_depth:
+        if _is_noise_element(tag, attrs):
+            if not is_void:
+                self.suppressed_depth = self.depth
             return
         if tag == "title":
             self.in_title = True
+        priority = _candidate_priority(tag, attrs)
+        if priority:
+            candidate = _TextCandidate(tag, self.depth, priority, [], [])
+            self.active_candidates.append(candidate)
+        if tag == "h1" and self.heading_depth is None:
+            self.heading_depth = self.depth
+            self.capture_document_heading = not self.heading_parts
+            self.heading_targets = [
+                candidate
+                for candidate in self.active_candidates
+                if not candidate.heading_parts
+            ]
         if tag in _BLOCK_ELEMENTS:
-            self.parts.append("\n")
+            self._append("\n")
 
     def handle_endtag(self, tag: str) -> None:
         tag = tag.lower()
-        if tag in _IGNORED_ELEMENTS:
-            self.ignored_depth = max(0, self.ignored_depth - 1)
+        if tag in _VOID_ELEMENTS:
             return
-        if self.ignored_depth:
+        if self.suppressed_depth is not None:
+            if self.depth == self.suppressed_depth:
+                self.suppressed_depth = None
+            self.depth = max(0, self.depth - 1)
             return
         if tag == "title":
             self.in_title = False
         if tag in _BLOCK_ELEMENTS:
-            self.parts.append("\n")
+            self._append("\n")
+        if tag == "h1" and self.heading_depth == self.depth:
+            self.heading_depth = None
+            self.capture_document_heading = False
+            self.heading_targets = []
+        closed = [
+            candidate
+            for candidate in self.active_candidates
+            if candidate.tag == tag and candidate.depth == self.depth
+        ]
+        for candidate in closed:
+            self.active_candidates.remove(candidate)
+            self.candidates.append(candidate)
+        self.depth = max(0, self.depth - 1)
 
     def handle_data(self, data: str) -> None:
-        if self.ignored_depth:
+        if self.suppressed_depth is not None:
             return
         if self.in_title:
             self.title_parts.append(data)
         else:
-            self.parts.append(data)
+            self._append(data)
+        if self.heading_depth is not None:
+            if self.capture_document_heading:
+                self.heading_parts.append(data)
+            for candidate in self.heading_targets:
+                candidate.heading_parts.append(data)
 
 
 def _extract_page_text(html: str, source_url: str) -> tuple[str, str]:
     parser = _VisibleTextParser()
     parser.feed(html)
-    title = re.sub(r"\s+", " ", " ".join(parser.title_parts)).strip()
+    candidates = parser.candidates + parser.active_candidates
+    selected = max(
+        candidates,
+        key=lambda candidate: (
+            candidate.priority,
+            len(" ".join(_normalized_lines(candidate.parts))),
+        ),
+        default=None,
+    )
+    selected_parts = selected.parts if selected is not None else parser.parts
+    selected_heading = selected.heading_parts if selected is not None else []
+    heading = re.sub(r"\s+", " ", " ".join(selected_heading)).strip()
+    document_title = re.sub(r"\s+", " ", " ".join(parser.title_parts)).strip()
+    title = heading or document_title
     if not title:
         title = urlsplit(source_url).hostname or "未命名网页"
     title = title[:200]
-    lines = []
-    for block in "".join(parser.parts).splitlines():
-        normalized = re.sub(r"\s+", " ", block).strip()
-        if normalized and (not lines or normalized != lines[-1]):
-            lines.append(normalized)
+    lines = _normalized_lines(selected_parts)
+    for index, line in enumerate(lines[:3]):
+        if line == title:
+            del lines[index]
+            break
     text = "\n\n".join(lines).strip()
     if len(text) < 20:
         raise RuntimeError("网页中没有足够的可读正文。")
