@@ -1,5 +1,8 @@
+import base64
 import json
 import socket
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,9 +12,11 @@ import httpx
 from app.douyin import (
     DouyinPage,
     DouyinProvider,
+    DouyinVideo,
     InvalidDouyinSourceError,
     download_douyin_media,
     fetch_douyin_page,
+    resolve_douyin_video_in_browser,
 )
 from app.provider import ArtifactDraft, ProviderResult
 from app.queue import JobQueue
@@ -45,6 +50,99 @@ class FakeLocalTranscriber:
 
 
 class DouyinProviderTests(unittest.TestCase):
+    def test_browser_fallback_uses_an_isolated_session_without_saved_state(self) -> None:
+        calls = []
+
+        def runner(command, **kwargs):
+            calls.append((command, kwargs))
+            if command[-2] == "-b":
+                script = base64.b64decode(command[-1]).decode("utf-8")
+                self.assertIn("document.querySelectorAll('video')", script)
+                self.assertIn("douyinvod.com", script)
+                self.assertIn("readyState >= 1", script)
+                kwargs["stdout"].write(
+                    json.dumps(
+                        {
+                            "media_url": "https://v26-web.douyinvod.com/video/play/rendered",
+                            "video_id": "1234567890",
+                            "title": "公开页面标题",
+                        }
+                    ).encode("utf-8")
+                )
+            return subprocess.CompletedProcess(command, 0)
+
+        video = resolve_douyin_video_in_browser(
+            "https://v.douyin.com/Rendered1/",
+            runner=runner,
+            executable=sys.executable,
+        )
+
+        commands = [call[0] for call in calls]
+        session_ids = {command[2] for command in commands}
+        flattened = [part for command in commands for part in command]
+        self.assertEqual(video.video_id, "1234567890")
+        self.assertEqual(len(session_ids), 1)
+        self.assertNotIn("--profile", flattened)
+        self.assertNotIn("--restore", flattened)
+        self.assertEqual([command[3] for command in commands], ["open", "eval", "close"])
+        self.assertEqual(commands[1][4], "-b")
+
+    def test_provider_falls_back_to_rendered_page_when_html_data_is_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            queue = JobQueue(root / "ingestion.db", root / "runs", ())
+            job = queue.submit_douyin("https://v.douyin.com/Rendered1/")
+            router_data = {
+                "loaderData": {
+                    "video_(id)/page": {
+                        "itemId": "1234567890",
+                        "renderInSSR": 1,
+                        "isSpider": False,
+                    }
+                }
+            }
+            page = DouyinPage(
+                final_url="https://www.iesdouyin.com/share/video/1234567890",
+                html=(
+                    "<script>window._ROUTER_DATA = "
+                    f"{json.dumps(router_data)}"
+                    "</script>"
+                ),
+                captured_at="2026-08-15T00:00:00+00:00",
+            )
+            browser_calls = []
+
+            def resolve_in_browser(source_url):
+                browser_calls.append(source_url)
+                return DouyinVideo(
+                    video_id="1234567890",
+                    title="浏览器渲染后的视频标题",
+                    media_url="https://v26-web.douyinvod.com/video/play/rendered",
+                )
+
+            def download(url, target, control) -> None:
+                target.write_bytes(b"temporary-video")
+
+            provider = DouyinProvider(
+                transcriber=FakeLocalTranscriber(),
+                fetcher=lambda _: page,
+                downloader=download,
+                browser_resolver=resolve_in_browser,
+            )
+
+            Worker(queue, provider, "worker-a").run_once()
+
+            completed = queue.get(job.id)
+            metadata = {
+                artifact.kind: artifact for artifact in queue.list_artifacts(job.id)
+            }["source_metadata"]
+            self.assertEqual(completed.status, "waiting_review")
+            self.assertEqual(browser_calls, [job.source_url])
+            self.assertEqual(
+                json.loads(metadata.path.read_text(encoding="utf-8"))["title"],
+                "浏览器渲染后的视频标题",
+            )
+
     def test_image_post_failure_is_explicit_and_never_downloads_media(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -99,6 +197,8 @@ class DouyinProviderTests(unittest.TestCase):
             target = root / "runs" / "job-1" / "source.mp4"
 
             def handler(request: httpx.Request) -> httpx.Response:
+                self.assertEqual(request.headers["referer"], "https://www.douyin.com/")
+                self.assertIn("Chrome/", request.headers["user-agent"])
                 return httpx.Response(
                     200,
                     headers={

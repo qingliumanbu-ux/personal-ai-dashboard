@@ -114,6 +114,8 @@ class FasterWhisperProvider:
         log_path = job.output_dir / "transcription.log"
         command = [
             str(self.python_path),
+            "-X",
+            "utf8",
             str(self.script_path),
             str(job.source_path),
             str(job.output_dir),

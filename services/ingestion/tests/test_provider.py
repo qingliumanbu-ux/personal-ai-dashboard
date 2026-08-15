@@ -158,7 +158,7 @@ output.mkdir(parents=True, exist_ok=True)
 (output / 'transcript.txt').write_text('hello', encoding='utf-8')
 (output / 'transcript.srt').write_text('subtitle', encoding='utf-8')
 (output / 'transcript.json').write_text('{}', encoding='utf-8')
-print('done', flush=True)
+print('\ufffd done', flush=True)
 """.strip(),
                 encoding="utf-8",
             )
@@ -183,4 +183,4 @@ print('done', flush=True)
             )
             self.assertIsNotNone(result.log_path)
             assert result.log_path is not None
-            self.assertIn("done", result.log_path.read_text(encoding="utf-8"))
+            self.assertIn("\ufffd done", result.log_path.read_text(encoding="utf-8"))
