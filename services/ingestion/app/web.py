@@ -67,6 +67,8 @@ _BLOCK_ELEMENTS = {
     "ol",
 }
 _IGNORED_ELEMENTS = {"script", "style", "noscript", "svg", "template"}
+_SHARED_URL_PATTERN = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
+_TRAILING_SHARE_PUNCTUATION = ".,;:!?，。；：！？、）)]}】》」』"
 
 
 class InvalidWebSourceError(ValueError):
@@ -78,6 +80,14 @@ class FetchedPage:
     final_url: str
     html: str
     captured_at: str
+
+
+def extract_shared_url(value: str) -> str:
+    raw = value.strip()
+    match = _SHARED_URL_PATTERN.search(raw)
+    if match is None:
+        raise InvalidWebSourceError("没有找到可采集的 http 或 https 链接。")
+    return normalize_web_url(match.group(0).rstrip(_TRAILING_SHARE_PUNCTUATION))
 
 
 def normalize_web_url(value: str) -> str:

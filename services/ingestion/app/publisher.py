@@ -140,6 +140,7 @@ class Publisher:
         title = job.source_path.stem.strip() or "未命名视频"
         filename = f"{_safe_filename(title)}-{publication_id[:8]}.md"
         relative_path = (RAW_VIDEO_DIRECTORY / filename).as_posix()
+        capture_frontmatter, capture_body = _capture_markdown(job.params)
         markdown = "\n".join(
             (
                 "---",
@@ -152,6 +153,7 @@ class Publisher:
                 f"source_sha256: {json.dumps(source_sha256)}",
                 f"transcript_sha256: {json.dumps(transcript.sha256)}",
                 f"published_at: {json.dumps(review.created_at)}",
+                *capture_frontmatter,
                 "---",
                 "",
                 f"# {title}",
@@ -161,6 +163,7 @@ class Publisher:
                 "- 类型：本地视频",
                 f"- 原文件：`{job.source_path.name}`",
                 "",
+                *capture_body,
                 "## 全文转写",
                 "",
                 transcript_text,
@@ -201,6 +204,7 @@ class Publisher:
         filename = f"{_safe_filename(title)}-{publication_id[:8]}.md"
         relative_path = (RAW_WEB_DIRECTORY / filename).as_posix()
         body = _without_leading_title(content_text, title)
+        capture_frontmatter, capture_body = _capture_markdown(job.params)
         markdown = "\n".join(
             (
                 "---",
@@ -214,6 +218,7 @@ class Publisher:
                 f"content_sha256: {json.dumps(content.sha256)}",
                 f"captured_at: {json.dumps(captured_at)}",
                 f"published_at: {json.dumps(review.created_at)}",
+                *capture_frontmatter,
                 "---",
                 "",
                 f"# {title}",
@@ -224,6 +229,7 @@ class Publisher:
                 f"- 原网页：{job.source_url}",
                 f"- 采集时间：{captured_at}",
                 "",
+                *capture_body,
                 "## 网页正文",
                 "",
                 body,
@@ -301,3 +307,30 @@ def _without_leading_title(content: str, title: str) -> str:
     if lines and lines[0].strip() == f"# {title}":
         lines = lines[1:]
     return "\n".join(lines).strip()
+
+
+def _capture_markdown(params: dict[str, str]) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    try:
+        parsed_tags = json.loads(params.get("capture_tags", "[]"))
+    except ValueError:
+        parsed_tags = []
+    if not isinstance(parsed_tags, list):
+        parsed_tags = []
+    tags = [str(tag).strip() for tag in parsed_tags if str(tag).strip()]
+    reason = params.get("capture_reason", "").strip()
+    if not tags and not reason:
+        return (), ()
+
+    frontmatter = []
+    if tags:
+        frontmatter.append(f"tags: {json.dumps(tags, ensure_ascii=False)}")
+    if reason:
+        frontmatter.append(f"capture_reason: {json.dumps(reason, ensure_ascii=False)}")
+
+    body = ["## 收藏上下文", ""]
+    if tags:
+        body.append(f"- 标签：{'、'.join(tags)}")
+    if reason:
+        body.append(f"- 收藏原因：{re.sub(r'\s+', ' ', reason)}")
+    body.append("")
+    return tuple(frontmatter), tuple(body)

@@ -5988,7 +5988,7 @@ h3 {
 
 .ingestion-submit {
   display: grid;
-  grid-template-columns: 46px 130px minmax(260px, 1fr) auto auto;
+  grid-template-columns: 46px 130px minmax(260px, 1fr) auto;
   gap: 14px;
   align-items: end;
   margin-bottom: 20px;
@@ -6008,6 +6008,8 @@ h3 {
   border-radius: 13px;
   background: var(--ingestion-signal-wash);
   color: var(--ingestion-signal-deep);
+  grid-column: 1;
+  grid-row: 1;
 }
 
 .ingestion-submit label:not(.ingestion-vad) {
@@ -6022,6 +6024,7 @@ h3 {
 
 .ingestion-submit input[type="text"],
 .ingestion-submit input[type="url"],
+.ingestion-submit textarea,
 .ingestion-submit select {
   width: 100%;
   height: 46px;
@@ -6034,11 +6037,27 @@ h3 {
   font: 12px var(--font-mono);
 }
 
+.ingestion-submit textarea {
+  min-height: 46px;
+  padding-block: 7px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
 .ingestion-submit input[type="text"]:focus,
 .ingestion-submit input[type="url"]:focus,
+.ingestion-submit textarea:focus,
 .ingestion-submit select:focus {
   border-color: var(--ingestion-signal-soft);
   box-shadow: 0 0 0 3px var(--ingestion-signal-wash);
+}
+
+.ingestion-submit__context {
+  grid-column: 2 / -1;
+  display: grid;
+  grid-template-columns: minmax(170px, 0.42fr) minmax(240px, 1fr) auto;
+  gap: 14px;
+  align-items: end;
 }
 
 .ingestion-vad {
@@ -6347,6 +6366,72 @@ h3 {
 .ingestion-detail__path {
   color: var(--ink-faint);
   font: 9.5px var(--font-mono);
+}
+
+.ingestion-capture-context {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: #f7f9f8;
+  color: var(--ink-soft);
+}
+
+.ingestion-capture-context__title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ingestion-graphite);
+  font-size: 11px;
+}
+
+.ingestion-capture-context__title svg {
+  width: 16px;
+  color: var(--ingestion-signal-deep);
+}
+
+.ingestion-capture-context__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ingestion-capture-context__tags span {
+  padding: 4px 7px;
+  border: 1px solid var(--ingestion-signal-soft);
+  border-radius: var(--r-pill);
+  background: var(--ingestion-signal-wash);
+  color: var(--ingestion-signal-deep);
+  font-size: 9.5px;
+}
+
+.ingestion-capture-context p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.ingestion-capture-context details {
+  font-size: 10px;
+}
+
+.ingestion-capture-context summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--ingestion-signal-deep);
+}
+
+.ingestion-capture-context details p {
+  margin-top: 8px;
+  padding-left: 12px;
+  border-left: 2px solid var(--ingestion-signal-soft);
+}
+
+.ingestion-capture-context + .ingestion-flow {
+  margin-top: 18px;
 }
 
 .ingestion-detail__head > time {
@@ -6675,17 +6760,8 @@ h3 {
     grid-template-columns: 46px 130px minmax(0, 1fr) auto;
   }
 
-  .ingestion-vad,
-  .ingestion-web-note {
-    grid-column: 2 / 4;
-    grid-row: 2;
-    height: auto;
-    padding: 0;
-  }
-
-  .ingestion-submit > button {
-    grid-column: 4;
-    grid-row: 1 / span 2;
+  .ingestion-submit__context {
+    grid-template-columns: minmax(150px, 0.42fr) minmax(200px, 1fr) auto;
   }
 
   .ingestion-workspace {
@@ -6730,12 +6806,30 @@ h3 {
     height: 40px;
   }
 
-  .ingestion-submit label:not(.ingestion-vad),
+  .ingestion-source-value,
   .ingestion-vad,
   .ingestion-web-note,
-  .ingestion-submit > button {
+  .ingestion-submit > button,
+  .ingestion-submit__context {
     grid-column: 1 / -1;
     grid-row: auto;
+  }
+
+  .ingestion-source-type {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .ingestion-submit__context {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .ingestion-vad,
+  .ingestion-web-note {
+    min-height: 32px;
+    height: auto;
+    padding: 0;
   }
 
   .ingestion-job-list {

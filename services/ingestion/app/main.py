@@ -12,7 +12,7 @@ from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .config import IngestionConfig
 from .provider import (
@@ -22,7 +22,7 @@ from .provider import (
     VadCapability,
     probe_vad_runtime,
 )
-from .web import InvalidWebSourceError, WebPageProvider, normalize_web_url
+from .web import InvalidWebSourceError, WebPageProvider, extract_shared_url
 from .publisher import (
     PublicationConflictError,
     PublicationNotAllowedError,
@@ -44,6 +44,9 @@ class CreateJobRequest(BaseModel):
     source_type: Literal["local-video", "web-page"] = "local-video"
     source_path: str | None = None
     source_url: str | None = None
+    source_text: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    capture_reason: str = ""
     language: str = "zh"
     model: str = "small"
     vad: bool = False
@@ -176,10 +179,15 @@ def create_app(
                 detail=active_vad_capability.reason or "VAD runtime is unavailable",
             )
         try:
+            capture_params = _capture_params(payload)
             if payload.source_type == "web-page":
-                if payload.source_url is None:
+                source_text = payload.source_text or payload.source_url
+                if source_text is None:
                     raise InvalidWebSourceError("Web URL is required")
-                job = queue.submit_web(normalize_web_url(payload.source_url))
+                source_url = extract_shared_url(source_text)
+                if source_text.strip() != source_url:
+                    capture_params["capture_text"] = source_text.strip()
+                job = queue.submit_web(source_url, capture_params)
             else:
                 if payload.source_path is None:
                     raise InvalidSourcePathError("Local source path is required")
@@ -189,6 +197,7 @@ def create_app(
                         "language": payload.language,
                         "model": payload.model,
                         "vad": "true" if payload.vad else "false",
+                        **capture_params,
                     },
                 )
         except InvalidSourcePathError as error:
@@ -362,6 +371,36 @@ def create_app(
         return StreamingResponse(stream(), media_type="text/event-stream")
 
     return app
+
+
+def _capture_params(payload: CreateJobRequest) -> dict[str, str]:
+    tags = []
+    seen = set()
+    for raw_tag in payload.tags:
+        tag = raw_tag.strip()
+        if not tag:
+            continue
+        if len(tag) > 40:
+            raise HTTPException(status_code=422, detail="单个标签不能超过 40 个字符。")
+        key = tag.casefold()
+        if key not in seen:
+            seen.add(key)
+            tags.append(tag)
+    if len(tags) > 12:
+        raise HTTPException(status_code=422, detail="一次最多添加 12 个标签。")
+
+    reason = payload.capture_reason.strip()
+    if len(reason) > 500:
+        raise HTTPException(status_code=422, detail="收藏原因不能超过 500 个字符。")
+    if payload.source_text is not None and len(payload.source_text.strip()) > 4_000:
+        raise HTTPException(status_code=422, detail="分享文本不能超过 4000 个字符。")
+
+    params = {}
+    if tags:
+        params["capture_tags"] = json.dumps(tags, ensure_ascii=False)
+    if reason:
+        params["capture_reason"] = reason
+    return params
 
 
 def _job_payload(job: Job) -> dict:

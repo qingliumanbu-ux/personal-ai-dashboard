@@ -7,6 +7,7 @@ import {
   IconPlayerPlay,
   IconRefresh,
   IconSend,
+  IconTags,
   IconUpload,
   IconWorld,
   IconX,
@@ -26,6 +27,7 @@ import {
 } from "../lib/ingestion-api";
 import {
   buildIngestionPayload,
+  ingestionCaptureContext,
   ingestionSourceLocation,
   ingestionSourceName,
 } from "../lib/ingestion-source";
@@ -131,6 +133,8 @@ export function IngestionPage() {
   const [filter, setFilter] = useState("all");
   const [sourceType, setSourceType] = useState("web-page");
   const [sourceValue, setSourceValue] = useState("");
+  const [captureTags, setCaptureTags] = useState("");
+  const [captureReason, setCaptureReason] = useState("");
   const [useVad, setUseVad] = useState(true);
   const [reviewNote, setReviewNote] = useState("");
   const [transcript, setTranscript] = useState("");
@@ -216,9 +220,13 @@ export function IngestionPage() {
         value: sourceValue,
         useVad,
         vadAvailable,
+        captureTags,
+        captureReason,
       }));
       setSelectedId(created.id);
       setSourceValue("");
+      setCaptureTags("");
+      setCaptureReason("");
     });
   };
 
@@ -233,13 +241,17 @@ export function IngestionPage() {
 
   const progress = flowProgress(detail);
   const state = displayStatus(detail);
+  const captureContext = ingestionCaptureContext(detail);
+  const hasCaptureContext = Boolean(
+    captureContext.tags.length || captureContext.reason || captureContext.sharedText,
+  );
 
   return (
     <div className="page page--ingestion">
       <PageHeader
         eyebrow="INGESTION DESK"
         title="采集与审核"
-        description="采集公开网页或本地视频，审核正文后，再明确发布为来源资料。"
+        description="粘贴分享文本或公开网页，或投递本地视频。审核正文后，再明确发布为来源资料。"
         aside={(
           <span className={`ingestion-service ingestion-service--${serviceOnline ? "online" : "offline"}`}>
             <span />
@@ -266,30 +278,64 @@ export function IngestionPage() {
             <option value="local-video">本地视频</option>
           </select>
         </label>
-        <label>
-          <span>{isWebSource ? "公开网页链接" : "视频文件路径"}</span>
-          <input
-            disabled={!serviceOnline || busy}
-            onChange={(event) => setSourceValue(event.target.value)}
-            placeholder={isWebSource ? "粘贴 http 或 https 网页链接" : "粘贴批准目录内的视频完整路径"}
-            type={isWebSource ? "url" : "text"}
-            value={sourceValue}
-          />
+        <label className="ingestion-source-value">
+          <span>{isWebSource ? "网页链接或分享文本" : "视频文件路径"}</span>
+          {isWebSource ? (
+            <textarea
+              disabled={!serviceOnline || busy}
+              maxLength="4000"
+              onChange={(event) => setSourceValue(event.target.value)}
+              placeholder="粘贴网页链接，或包含链接的平台分享文本"
+              rows="2"
+              value={sourceValue}
+            />
+          ) : (
+            <input
+              disabled={!serviceOnline || busy}
+              onChange={(event) => setSourceValue(event.target.value)}
+              placeholder="粘贴批准目录内的视频完整路径"
+              type="text"
+              value={sourceValue}
+            />
+          )}
         </label>
-        {!isWebSource ? <label className="ingestion-vad">
-          <input
-            checked={useVad && vadAvailable}
-            disabled={!serviceOnline || busy || !vadAvailable}
-            onChange={(event) => setUseVad(event.target.checked)}
-            title={!vadAvailable ? vadCapability?.reason : undefined}
-            type="checkbox"
-          />
-          <span>{vadAvailable ? "过滤静音" : "静音过滤暂不可用"}</span>
-        </label> : <span className="ingestion-web-note">仅抓取公开网页，不使用登录态</span>}
         <button disabled={!serviceOnline || busy || !sourceValue.trim()} type="submit">
           <IconSend aria-hidden="true" />
           {isWebSource ? "采集网页" : "投递视频"}
         </button>
+        <div className="ingestion-submit__context">
+          <label>
+            <span>标签（可选）</span>
+            <input
+              disabled={!serviceOnline || busy}
+              onChange={(event) => setCaptureTags(event.target.value)}
+              placeholder="多个标签用逗号分隔"
+              type="text"
+              value={captureTags}
+            />
+          </label>
+          <label>
+            <span>为什么收藏（可选）</span>
+            <input
+              disabled={!serviceOnline || busy}
+              maxLength="500"
+              onChange={(event) => setCaptureReason(event.target.value)}
+              placeholder="例如：补充当前知识库方案"
+              type="text"
+              value={captureReason}
+            />
+          </label>
+          {!isWebSource ? <label className="ingestion-vad">
+            <input
+              checked={useVad && vadAvailable}
+              disabled={!serviceOnline || busy || !vadAvailable}
+              onChange={(event) => setUseVad(event.target.checked)}
+              title={!vadAvailable ? vadCapability?.reason : undefined}
+              type="checkbox"
+            />
+            <span>{vadAvailable ? "过滤静音" : "静音过滤暂不可用"}</span>
+          </label> : <span className="ingestion-web-note">自动提取首个公开链接，不使用登录态</span>}
+        </div>
       </form>
 
       {error ? (
@@ -349,7 +395,7 @@ export function IngestionPage() {
               <div className="ingestion-empty">
                 <IconFileText aria-hidden="true" />
                 <strong>{jobs.length ? "这个筛选下没有任务" : "还没有采集任务"}</strong>
-                <span>在上方粘贴网页链接或本地视频路径，任务会出现在这里。</span>
+                <span>在上方粘贴分享文本、网页链接或本地视频路径，任务会出现在这里。</span>
               </div>
             ) : null}
           </div>
@@ -366,6 +412,27 @@ export function IngestionPage() {
                 </div>
                 <time>{formatCompactDate(detail.updated_at)}</time>
               </header>
+
+              {hasCaptureContext ? (
+                <section className="ingestion-capture-context">
+                  <div className="ingestion-capture-context__title">
+                    <IconTags aria-hidden="true" />
+                    <strong>收藏上下文</strong>
+                  </div>
+                  {captureContext.tags.length ? (
+                    <div className="ingestion-capture-context__tags">
+                      {captureContext.tags.map((tag) => <span key={tag}>{tag}</span>)}
+                    </div>
+                  ) : null}
+                  {captureContext.reason ? <p>{captureContext.reason}</p> : null}
+                  {captureContext.sharedText ? (
+                    <details>
+                      <summary>查看原始分享文本</summary>
+                      <p>{captureContext.sharedText}</p>
+                    </details>
+                  ) : null}
+                </section>
+              ) : null}
 
               <div className="ingestion-flow" style={{ "--flow-progress": `${progress}%` }}>
                 <div className="ingestion-flow__track"><span /></div>

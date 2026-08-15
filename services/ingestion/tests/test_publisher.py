@@ -29,7 +29,13 @@ class PublisherTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             queue = JobQueue(root / "runtime" / "ingestion.db", root / "runs", ())
-            job = queue.submit_web("https://example.com/article")
+            job = queue.submit_web(
+                "https://example.com/article",
+                {
+                    "capture_tags": '["AI", "Obsidian"]',
+                    "capture_reason": "补充网页采集方案",
+                },
+            )
             provider = WebPageProvider(
                 fetcher=lambda _: FetchedPage(
                     final_url="https://example.com/article",
@@ -51,6 +57,11 @@ class PublisherTests(unittest.TestCase):
             markdown = (vault / Path(publication.relative_path)).read_text(encoding="utf-8")
             self.assertIn("source_type: web-page", markdown)
             self.assertIn("source_url: \"https://example.com/article\"", markdown)
+            self.assertIn('tags: ["AI", "Obsidian"]', markdown)
+            self.assertIn('capture_reason: "补充网页采集方案"', markdown)
+            self.assertIn("## 收藏上下文", markdown)
+            self.assertIn("- 标签：AI、Obsidian", markdown)
+            self.assertIn("- 收藏原因：补充网页采集方案", markdown)
             self.assertIn("# Example Article", markdown)
             self.assertIn("Useful source text with enough detail.", markdown)
             self.assertNotIn("<html>", markdown)

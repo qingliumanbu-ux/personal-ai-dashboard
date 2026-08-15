@@ -6,6 +6,8 @@ The service writes runtime queue data outside the repository. Publishing is a se
 
 Web capture accepts public `http` and `https` pages only. It rejects credentials in URLs, credential-like query parameters, non-standard ports, localhost, private/link-local/reserved addresses, unsafe redirects, non-HTML responses, and documents larger than 5 MB. It does not use browser login state.
 
+Quick capture accepts either a public URL or platform share text containing a public URL. It extracts and de-duplicates the normalized URL while keeping optional tags, the capture reason, and the original share text in the runtime job. After approval, tags and the capture reason are included in the Raw Markdown; the original share text remains outside the Vault.
+
 ## Development
 
 Create a service-specific virtual environment, install `requirements-dev.txt`, then run:

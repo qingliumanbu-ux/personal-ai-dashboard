@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -26,6 +27,40 @@ class ApiFakeProvider:
 
 
 class ApiTests(unittest.TestCase):
+    def test_shared_text_creates_a_queued_job_with_capture_context(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = IngestionConfig.for_testing(root, ())
+            shared_text = (
+                "收藏这篇文章 https://example.com/article#notes "
+                "稍后整理"
+            )
+
+            with TestClient(create_app(config, start_worker=False)) as client:
+                created = client.post(
+                    "/api/jobs",
+                    json={
+                        "source_type": "web-page",
+                        "source_text": shared_text,
+                        "tags": ["AI", " Obsidian ", "AI"],
+                        "capture_reason": "补充移动端收藏流程",
+                    },
+                )
+
+            self.assertEqual(created.status_code, 201)
+            payload = created.json()
+            self.assertEqual(payload["status"], "queued")
+            self.assertEqual(payload["source_url"], "https://example.com/article")
+            self.assertEqual(
+                json.loads(payload["params"]["capture_tags"]),
+                ["AI", "Obsidian"],
+            )
+            self.assertEqual(
+                payload["params"]["capture_reason"],
+                "补充移动端收藏流程",
+            )
+            self.assertEqual(payload["params"]["capture_text"], shared_text)
+
     def test_accepts_web_source_and_rejects_video_only_options(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

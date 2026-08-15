@@ -6,6 +6,7 @@ from pathlib import Path
 
 from app.queue import JobQueue
 from app.web import (
+    extract_shared_url,
     FetchedPage,
     InvalidWebSourceError,
     WebPageProvider,
@@ -30,6 +31,17 @@ class RecordingControl:
 
 
 class WebSourceTests(unittest.TestCase):
+    def test_extracts_the_first_public_url_from_shared_text(self) -> None:
+        shared_text = (
+            "4.20 复制打开抖音，看看【知识库示例】 "
+            "https://v.douyin.com/abc123/ 复制此链接，打开 App"
+        )
+
+        self.assertEqual(
+            extract_shared_url(shared_text),
+            "https://v.douyin.com/abc123/",
+        )
+
     def test_normalizes_public_http_url_without_fragment(self) -> None:
         normalized = normalize_web_url("HTTPS://Example.COM/article?q=notes#section")
 
