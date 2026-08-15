@@ -71,6 +71,17 @@ class TranscriptionProvider(Protocol):
     def run(self, job: Job, control: ExecutionControl) -> ProviderResult: ...
 
 
+class RoutingProvider:
+    def __init__(self, providers: dict[str, TranscriptionProvider]) -> None:
+        self.providers = dict(providers)
+
+    def run(self, job: Job, control: ExecutionControl) -> ProviderResult:
+        provider = self.providers.get(job.source_type)
+        if provider is None:
+            raise ValueError(f"Unsupported source type: {job.source_type}")
+        return provider.run(job, control)
+
+
 class FasterWhisperProvider:
     def __init__(
         self,
@@ -89,6 +100,8 @@ class FasterWhisperProvider:
         self.vad_probe = vad_probe or probe_vad_runtime
 
     def run(self, job: Job, control: ExecutionControl) -> ProviderResult:
+        if job.source_type != "local-video" or job.source_path is None:
+            raise ValueError("Transcription provider requires a local-video job")
         if not self.python_path.is_file():
             raise FileNotFoundError(f"Transcription Python not found: {self.python_path}")
         if not self.script_path.is_file():

@@ -17,10 +17,12 @@ from pydantic import BaseModel
 from .config import IngestionConfig
 from .provider import (
     FasterWhisperProvider,
+    RoutingProvider,
     TranscriptionProvider,
     VadCapability,
     probe_vad_runtime,
 )
+from .web import InvalidWebSourceError, WebPageProvider, normalize_web_url
 from .publisher import (
     PublicationConflictError,
     PublicationNotAllowedError,
@@ -39,7 +41,9 @@ from .worker import Worker
 
 
 class CreateJobRequest(BaseModel):
-    source_path: str
+    source_type: Literal["local-video", "web-page"] = "local-video"
+    source_path: str | None = None
+    source_url: str | None = None
     language: str = "zh"
     model: str = "small"
     vad: bool = False
@@ -77,10 +81,15 @@ def create_app(
     async def lifespan(_: FastAPI):
         nonlocal worker_thread
         if start_worker:
-            active_provider = provider or FasterWhisperProvider(
-                config.transcription_python,
-                config.transcription_script,
-                config.model_dir,
+            active_provider = provider or RoutingProvider(
+                {
+                    "local-video": FasterWhisperProvider(
+                        config.transcription_python,
+                        config.transcription_script,
+                        config.model_dir,
+                    ),
+                    "web-page": WebPageProvider(),
+                }
             )
             worker = Worker(queue, active_provider, "local-worker")
             worker_thread = threading.Thread(
@@ -95,7 +104,7 @@ def create_app(
         if worker_thread is not None:
             worker_thread.join(timeout=5)
 
-    app = FastAPI(title="Personal AI Dashboard Ingestion", version="0.2.0", lifespan=lifespan)
+    app = FastAPI(title="Personal AI Dashboard Ingestion", version="0.3.0", lifespan=lifespan)
     app.state.queue = queue
     app.state.publisher = publisher
     app.state.config = config
@@ -133,7 +142,8 @@ def create_app(
                 "vad": {
                     "available": active_vad_capability.available,
                     "reason": active_vad_capability.reason,
-                }
+                },
+                "web_page": {"available": True, "reason": None},
             },
         }
 
@@ -151,25 +161,43 @@ def create_app(
 
     @app.post("/api/jobs", status_code=status.HTTP_201_CREATED)
     def create_job(payload: CreateJobRequest) -> dict:
-        if payload.vad and not active_vad_capability.available:
+        if payload.source_type == "web-page" and payload.vad:
+            raise HTTPException(
+                status_code=422,
+                detail="VAD is only available for local video sources",
+            )
+        if (
+            payload.source_type == "local-video"
+            and payload.vad
+            and not active_vad_capability.available
+        ):
             raise HTTPException(
                 status_code=422,
                 detail=active_vad_capability.reason or "VAD runtime is unavailable",
             )
         try:
-            job = queue.submit(
-                Path(payload.source_path),
-                {
-                    "language": payload.language,
-                    "model": payload.model,
-                    "vad": "true" if payload.vad else "false",
-                },
-            )
+            if payload.source_type == "web-page":
+                if payload.source_url is None:
+                    raise InvalidWebSourceError("Web URL is required")
+                job = queue.submit_web(normalize_web_url(payload.source_url))
+            else:
+                if payload.source_path is None:
+                    raise InvalidSourcePathError("Local source path is required")
+                job = queue.submit(
+                    Path(payload.source_path),
+                    {
+                        "language": payload.language,
+                        "model": payload.model,
+                        "vad": "true" if payload.vad else "false",
+                    },
+                )
         except InvalidSourcePathError as error:
             raise HTTPException(
                 status_code=400,
                 detail="路径不在批准的来源目录内，或文件不存在。",
             ) from error
+        except InvalidWebSourceError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
         except DuplicateJobError as error:
             raise HTTPException(
                 status_code=409,
@@ -245,6 +273,11 @@ def create_app(
     def retry_job(job_id: str, payload: RetryJobRequest | None = None) -> dict:
         try:
             job = queue.get(job_id)
+            if job.source_type == "web-page" and payload is not None and payload.vad is not None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="VAD is only available for local video sources",
+                )
             requested_vad = (
                 payload.vad
                 if payload is not None and payload.vad is not None
@@ -296,7 +329,7 @@ def create_app(
             artifact = queue.get_artifact(job_id, artifact_id)
         except (JobNotFoundError, OSError) as error:
             raise HTTPException(status_code=404, detail="Artifact not found") from error
-        if artifact.kind == "transcript":
+        if artifact.kind in {"transcript", "content"}:
             return FileResponse(artifact.path, media_type="text/plain; charset=utf-8")
         return FileResponse(artifact.path, filename=artifact.path.name)
 
@@ -334,7 +367,9 @@ def create_app(
 def _job_payload(job: Job) -> dict:
     return {
         "id": job.id,
-        "source_path": str(job.source_path),
+        "source_type": job.source_type,
+        "source_path": str(job.source_path) if job.source_path is not None else None,
+        "source_url": job.source_url,
         "status": job.status,
         "output_dir": str(job.output_dir),
         "params": job.params,

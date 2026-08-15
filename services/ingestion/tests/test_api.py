@@ -26,6 +26,37 @@ class ApiFakeProvider:
 
 
 class ApiTests(unittest.TestCase):
+    def test_accepts_web_source_and_rejects_video_only_options(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = IngestionConfig.for_testing(root, ())
+
+            with TestClient(create_app(config, start_worker=False)) as client:
+                created = client.post(
+                    "/api/jobs",
+                    json={
+                        "source_type": "web-page",
+                        "source_url": "https://example.com/article",
+                    },
+                )
+                rejected = client.post(
+                    "/api/jobs",
+                    json={
+                        "source_type": "web-page",
+                        "source_url": "https://example.com/article-2",
+                        "vad": True,
+                    },
+                )
+
+            self.assertEqual(created.status_code, 201)
+            self.assertEqual(created.json()["source_type"], "web-page")
+            self.assertEqual(
+                created.json()["source_url"],
+                "https://example.com/article",
+            )
+            self.assertIsNone(created.json()["source_path"])
+            self.assertEqual(rejected.status_code, 422)
+
     def test_health_exposes_vad_capability_and_rejects_unavailable_vad(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

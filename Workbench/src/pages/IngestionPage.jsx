@@ -8,6 +8,7 @@ import {
   IconRefresh,
   IconSend,
   IconUpload,
+  IconWorld,
   IconX,
 } from "@tabler/icons-react";
 import { PageHeader } from "../components/PageHeader";
@@ -23,6 +24,11 @@ import {
   retryIngestionJob,
   reviewIngestionJob,
 } from "../lib/ingestion-api";
+import {
+  buildIngestionPayload,
+  ingestionSourceLocation,
+  ingestionSourceName,
+} from "../lib/ingestion-source";
 
 const FILTERS = [
   ["all", "全部"],
@@ -44,28 +50,37 @@ const STATUS = {
 
 function displayStatus(job) {
   if (job?.publication) return { label: "已发布", tone: "published" };
+  if (job?.source_type === "web-page" && job?.status === "running") {
+    return { label: "采集中", tone: "live" };
+  }
   return STATUS[job?.status] || { label: job?.status || "未知", tone: "neutral" };
 }
 
-function sourceName(path = "") {
-  return path.split(/[\\/]/).pop() || "未命名视频";
-}
-
-function stepLabel(value = "") {
+function stepLabel(value = "", sourceType = "local-video") {
   const labels = {
     "Waiting in queue": "排队等待",
     "Starting transcription": "正在启动转写",
     "Loading local model": "正在加载本地模型",
     "Ready for review": "转写完成，等待审核",
     "Transcript approved": "内容已通过审核",
+    "Content approved": "内容已通过审核",
     "Changes requested": "已要求修改",
     "Transcript rejected": "内容未通过",
+    "Content rejected": "内容未通过",
     "Transcription failed": "转写失败",
+    "Starting ingestion": "正在启动处理",
+    "Fetching webpage": "正在抓取网页",
+    "Extracting webpage content": "正在提取网页正文",
+    "Validating webpage artifacts": "正在校验网页产物",
+    "Ingestion failed": "采集失败",
     "Cancellation requested": "正在取消",
     Cancelled: "已取消",
   };
   if (value.startsWith("Transcribing ")) {
     return `正在转写 ${value.slice("Transcribing ".length)}`;
+  }
+  if (value === "Ready for review" && sourceType === "web-page") {
+    return "网页正文已提取，等待审核";
   }
   return labels[value] || value;
 }
@@ -114,7 +129,8 @@ export function IngestionPage() {
   const [selectedId, setSelectedId] = useState(null);
   const [detail, setDetail] = useState(null);
   const [filter, setFilter] = useState("all");
-  const [sourcePath, setSourcePath] = useState("");
+  const [sourceType, setSourceType] = useState("web-page");
+  const [sourceValue, setSourceValue] = useState("");
   const [useVad, setUseVad] = useState(true);
   const [reviewNote, setReviewNote] = useState("");
   const [transcript, setTranscript] = useState("");
@@ -122,10 +138,11 @@ export function IngestionPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const transcriptArtifactId = detail?.artifacts?.find(
-    (item) => item.kind === "transcript",
+    (item) => ["transcript", "content"].includes(item.kind),
   )?.id;
   const vadCapability = serviceHealth?.capabilities?.vad;
   const vadAvailable = vadCapability?.available !== false;
+  const isWebSource = sourceType === "web-page";
 
   const refresh = useCallback(async () => {
     try {
@@ -138,7 +155,6 @@ export function IngestionPage() {
       if (!selectedId && nextSelected) setSelectedId(nextSelected);
       if (nextSelected) setDetail(await loadIngestionJob(nextSelected));
       else setDetail(null);
-      setError("");
     } catch (refreshError) {
       setServiceHealth(null);
       setServiceOnline(false);
@@ -193,17 +209,16 @@ export function IngestionPage() {
 
   const submit = (event) => {
     event.preventDefault();
-    const normalizedPath = sourcePath.trim();
-    if (!normalizedPath) return;
+    if (!sourceValue.trim()) return;
     runAction(async () => {
-      const created = await createIngestionJob({
-        source_path: normalizedPath,
-        language: "zh",
-        model: "small",
-        vad: useVad && vadAvailable,
-      });
+      const created = await createIngestionJob(buildIngestionPayload({
+        sourceType,
+        value: sourceValue,
+        useVad,
+        vadAvailable,
+      }));
       setSelectedId(created.id);
-      setSourcePath("");
+      setSourceValue("");
     });
   };
 
@@ -224,7 +239,7 @@ export function IngestionPage() {
       <PageHeader
         eyebrow="INGESTION DESK"
         title="采集与审核"
-        description="把本地视频送入转写队列，审核内容后，再明确发布为来源资料。"
+        description="采集公开网页或本地视频，审核正文后，再明确发布为来源资料。"
         aside={(
           <span className={`ingestion-service ingestion-service--${serviceOnline ? "online" : "offline"}`}>
             <span />
@@ -234,18 +249,34 @@ export function IngestionPage() {
       />
 
       <form className="ingestion-submit" onSubmit={submit}>
-        <div className="ingestion-submit__mark"><IconUpload aria-hidden="true" /></div>
+        <div className="ingestion-submit__mark">
+          {isWebSource ? <IconWorld aria-hidden="true" /> : <IconUpload aria-hidden="true" />}
+        </div>
+        <label className="ingestion-source-type">
+          <span>来源类型</span>
+          <select
+            disabled={!serviceOnline || busy}
+            onChange={(event) => {
+              setSourceType(event.target.value);
+              setSourceValue("");
+            }}
+            value={sourceType}
+          >
+            <option value="web-page">网页链接</option>
+            <option value="local-video">本地视频</option>
+          </select>
+        </label>
         <label>
-          <span>视频文件路径</span>
+          <span>{isWebSource ? "公开网页链接" : "视频文件路径"}</span>
           <input
             disabled={!serviceOnline || busy}
-            onChange={(event) => setSourcePath(event.target.value)}
-            placeholder="粘贴批准目录内的视频完整路径"
-            type="text"
-            value={sourcePath}
+            onChange={(event) => setSourceValue(event.target.value)}
+            placeholder={isWebSource ? "粘贴 http 或 https 网页链接" : "粘贴批准目录内的视频完整路径"}
+            type={isWebSource ? "url" : "text"}
+            value={sourceValue}
           />
         </label>
-        <label className="ingestion-vad">
+        {!isWebSource ? <label className="ingestion-vad">
           <input
             checked={useVad && vadAvailable}
             disabled={!serviceOnline || busy || !vadAvailable}
@@ -254,10 +285,10 @@ export function IngestionPage() {
             type="checkbox"
           />
           <span>{vadAvailable ? "过滤静音" : "静音过滤暂不可用"}</span>
-        </label>
-        <button disabled={!serviceOnline || busy || !sourcePath.trim()} type="submit">
+        </label> : <span className="ingestion-web-note">仅抓取公开网页，不使用登录态</span>}
+        <button disabled={!serviceOnline || busy || !sourceValue.trim()} type="submit">
           <IconSend aria-hidden="true" />
-          投递视频
+          {isWebSource ? "采集网页" : "投递视频"}
         </button>
       </form>
 
@@ -304,8 +335,8 @@ export function IngestionPage() {
                 >
                   <span className={`ingestion-job__signal ingestion-tone--${jobState.tone}`} />
                   <span className="ingestion-job__body">
-                    <strong>{sourceName(job.source_path)}</strong>
-                    <span>{stepLabel(job.current_step)}</span>
+                    <strong>{ingestionSourceName(job)}</strong>
+                    <span>{stepLabel(job.current_step, job.source_type)}</span>
                   </span>
                   <span className={`ingestion-status ingestion-tone--${jobState.tone}`}>
                     {jobState.label}
@@ -317,8 +348,8 @@ export function IngestionPage() {
             {visibleJobs.length === 0 ? (
               <div className="ingestion-empty">
                 <IconFileText aria-hidden="true" />
-                <strong>{jobs.length ? "这个筛选下没有任务" : "还没有投递视频"}</strong>
-                <span>在上方粘贴本地视频路径，任务会出现在这里。</span>
+                <strong>{jobs.length ? "这个筛选下没有任务" : "还没有采集任务"}</strong>
+                <span>在上方粘贴网页链接或本地视频路径，任务会出现在这里。</span>
               </div>
             ) : null}
           </div>
@@ -330,8 +361,8 @@ export function IngestionPage() {
               <header className="ingestion-detail__head">
                 <div>
                   <span className={`ingestion-status ingestion-tone--${state.tone}`}>{state.label}</span>
-                  <h2>{sourceName(detail.source_path)}</h2>
-                  <span className="ingestion-detail__path" title={detail.source_path}>{detail.source_path}</span>
+                  <h2>{ingestionSourceName(detail)}</h2>
+                  <span className="ingestion-detail__path" title={ingestionSourceLocation(detail)}>{ingestionSourceLocation(detail)}</span>
                 </div>
                 <time>{formatCompactDate(detail.updated_at)}</time>
               </header>
@@ -340,7 +371,7 @@ export function IngestionPage() {
                 <div className="ingestion-flow__track"><span /></div>
                 {[
                   ["submit", "投递"],
-                  ["transcribe", "转写"],
+                  ["transcribe", detail.source_type === "web-page" ? "抓取" : "转写"],
                   ["review", "审核"],
                   ["publish", "发布"],
                 ].map(([key, label]) => (
@@ -350,7 +381,7 @@ export function IngestionPage() {
                   </div>
                 ))}
                 <div className="ingestion-flow__readout">
-                  <span>{stepLabel(detail.current_step)}</span>
+                  <span>{stepLabel(detail.current_step, detail.source_type)}</span>
                   <strong>{progressReadout(detail)}</strong>
                 </div>
               </div>
@@ -359,7 +390,7 @@ export function IngestionPage() {
                 <section className="ingestion-review">
                   <div className="ingestion-section-title">
                     <span>REVIEW GATE</span>
-                    <h3>请判断这份转写是否可作为来源资料</h3>
+                    <h3>请判断这份{detail.source_type === "web-page" ? "网页正文" : "转写"}是否可作为来源资料</h3>
                   </div>
                   <textarea
                     onChange={(event) => setReviewNote(event.target.value)}
@@ -387,8 +418,8 @@ export function IngestionPage() {
                     <h3>审核已通过，尚未写入知识库</h3>
                   </div>
                   <dl>
-                    <div><dt>目标位置</dt><dd>{detail.publication_preview?.relative_path || "04-来源资料/视频"}</dd></div>
-                    <div><dt>写入内容</dt><dd>仅 Markdown，不复制原视频</dd></div>
+                    <div><dt>目标位置</dt><dd>{detail.publication_preview?.relative_path || (detail.source_type === "web-page" ? "04-来源资料/网页" : "04-来源资料/视频")}</dd></div>
+                    <div><dt>写入内容</dt><dd>{detail.source_type === "web-page" ? "正文 Markdown，不写入原始 HTML" : "仅 Markdown，不复制原视频"}</dd></div>
                     <div><dt>知识状态</dt><dd>来源资料，不是正式知识</dd></div>
                   </dl>
                   {!confirmPublish ? (
@@ -426,12 +457,12 @@ export function IngestionPage() {
                       disabled={busy}
                       onClick={() => runAction(() => retryIngestionJob(
                         detail.id,
-                        detail.params?.vad === "true" && !vadAvailable ? false : undefined,
+                        detail.source_type === "local-video" && detail.params?.vad === "true" && !vadAvailable ? false : undefined,
                       ))}
                       type="button"
                     >
                       <IconRefresh />
-                      {detail.params?.vad === "true" && !vadAvailable
+                      {detail.source_type === "local-video" && detail.params?.vad === "true" && !vadAvailable
                         ? "关闭静音过滤后重试"
                         : "重新排队"}
                     </button>
@@ -443,13 +474,15 @@ export function IngestionPage() {
 
               <section className="ingestion-transcript">
                 <div className="ingestion-section-title">
-                  <span>TRANSCRIPT</span>
-                  <h3>转写正文</h3>
+                  <span>{detail.source_type === "web-page" ? "WEB CONTENT" : "TRANSCRIPT"}</span>
+                  <h3>{detail.source_type === "web-page" ? "网页正文" : "转写正文"}</h3>
                 </div>
                 {transcript ? <pre>{transcript}</pre> : (
                   <div className="ingestion-transcript__empty">
-                    <IconPlayerPlay aria-hidden="true" />
-                    <span>{detail.status === "running" ? "转写进行中，完成后在这里审核全文。" : "当前还没有可阅读的转写文本。"}</span>
+                    {detail.source_type === "web-page" ? <IconWorld aria-hidden="true" /> : <IconPlayerPlay aria-hidden="true" />}
+                    <span>{detail.status === "running"
+                      ? detail.source_type === "web-page" ? "网页采集中，完成后在这里审核正文。" : "转写进行中，完成后在这里审核全文。"
+                      : detail.source_type === "web-page" ? "当前还没有可阅读的网页正文。" : "当前还没有可阅读的转写文本。"}</span>
                   </div>
                 )}
               </section>

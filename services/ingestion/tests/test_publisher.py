@@ -6,6 +6,7 @@ from app.provider import ArtifactDraft, ProviderResult
 from app.publisher import PublicationConflictError, PublicationNotAllowedError, Publisher
 from app.queue import JobQueue
 from app.worker import Worker
+from app.web import FetchedPage, WebPageProvider
 
 
 class FakeProvider:
@@ -24,6 +25,36 @@ class FakeProvider:
 
 
 class PublisherTests(unittest.TestCase):
+    def test_approved_webpage_publishes_to_raw_web_layer(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            queue = JobQueue(root / "runtime" / "ingestion.db", root / "runs", ())
+            job = queue.submit_web("https://example.com/article")
+            provider = WebPageProvider(
+                fetcher=lambda _: FetchedPage(
+                    final_url="https://example.com/article",
+                    html=(
+                        "<html><head><title>Example Article</title></head>"
+                        "<body><article><p>Useful source text with enough detail.</p></article></body></html>"
+                    ),
+                    captured_at="2026-08-15T00:00:00+00:00",
+                )
+            )
+            Worker(queue, provider, "worker-a").run_once()
+            queue.review(job.id, "approved", "内容通过")
+            vault = root / "vault"
+            vault.mkdir()
+
+            publication = Publisher(queue, vault).publish(job.id)
+
+            self.assertTrue(publication.relative_path.startswith("04-来源资料/网页/"))
+            markdown = (vault / Path(publication.relative_path)).read_text(encoding="utf-8")
+            self.assertIn("source_type: web-page", markdown)
+            self.assertIn("source_url: \"https://example.com/article\"", markdown)
+            self.assertIn("# Example Article", markdown)
+            self.assertIn("Useful source text with enough detail.", markdown)
+            self.assertNotIn("<html>", markdown)
+
     def create_job(self, root: Path):
         source_root = root / "sources"
         source_root.mkdir()

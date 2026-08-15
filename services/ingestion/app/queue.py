@@ -14,7 +14,9 @@ from uuid import uuid4
 @dataclass(frozen=True)
 class Job:
     id: str
-    source_path: Path
+    source_type: str
+    source_path: Path | None
+    source_url: str | None
     status: str
     output_dir: Path
     params: dict[str, str]
@@ -111,11 +113,38 @@ class JobQueue:
             raise InvalidSourcePathError(str(source_path)) from error
         if not source.is_file() or not any(root in source.parents for root in self.allowed_source_roots):
             raise InvalidSourcePathError(str(source))
+        return self._submit(
+            source_type="local-video",
+            source_path=source,
+            source_url=None,
+            params=params,
+        )
+
+    def submit_web(self, source_url: str, params: dict[str, str] | None = None) -> Job:
+        normalized_url = source_url.strip()
+        if not normalized_url:
+            raise ValueError("Web source URL is required")
+        return self._submit(
+            source_type="web-page",
+            source_path=None,
+            source_url=normalized_url,
+            params=params,
+        )
+
+    def _submit(
+        self,
+        source_type: str,
+        source_path: Path | None,
+        source_url: str | None,
+        params: dict[str, str] | None,
+    ) -> Job:
         now = datetime.now(UTC).isoformat()
         job_id = str(uuid4())
         job = Job(
             id=job_id,
-            source_path=source,
+            source_type=source_type,
+            source_path=source_path,
+            source_url=source_url,
             status="queued",
             output_dir=self.runs_dir / job_id,
             params=dict(params or {}),
@@ -132,30 +161,35 @@ class JobQueue:
         )
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            source_column = "source_path" if source_type == "local-video" else "source_url"
+            source_value = str(source_path) if source_path is not None else source_url
             duplicate = connection.execute(
-                """
+                f"""
                 SELECT id
                 FROM jobs
-                WHERE source_path = ? AND status IN ('queued', 'running', 'waiting_review')
+                WHERE source_type = ? AND {source_column} = ?
+                    AND status IN ('queued', 'running', 'waiting_review')
                 ORDER BY created_at DESC
                 LIMIT 1
                 """,
-                (str(source),),
+                (source_type, source_value),
             ).fetchone()
             if duplicate is not None:
                 raise DuplicateJobError(duplicate["id"])
             connection.execute(
                 """
                 INSERT INTO jobs (
-                    id, source_path, status, output_dir, params_json, progress,
+                    id, source_type, source_path, source_url, status, output_dir, params_json, progress,
                     current_step, attempt_count, lease_owner, lease_expires_at,
                     pid, error, cancel_requested, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     job.id,
-                    str(job.source_path),
+                    job.source_type,
+                    str(job.source_path) if job.source_path is not None else "",
+                    job.source_url,
                     job.status,
                     str(job.output_dir),
                     json.dumps(job.params, ensure_ascii=False),
@@ -205,20 +239,25 @@ class JobQueue:
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
-                "SELECT id FROM jobs WHERE status = 'queued' ORDER BY created_at, id LIMIT 1"
+                "SELECT id, source_type FROM jobs WHERE status = 'queued' ORDER BY created_at, id LIMIT 1"
             ).fetchone()
             if row is None:
                 return None
             job_id = row["id"]
+            starting_step = (
+                "Starting transcription"
+                if row["source_type"] == "local-video"
+                else "Starting ingestion"
+            )
             connection.execute(
                 """
                 UPDATE jobs
-                SET status = 'running', progress = 0, current_step = 'Starting transcription',
+                SET status = 'running', progress = 0, current_step = ?,
                     attempt_count = attempt_count + 1, lease_owner = ?, lease_expires_at = ?,
                     error = NULL, cancel_requested = 0, updated_at = ?
                 WHERE id = ? AND status = 'queued'
                 """,
-                (worker_id, lease_expires_at, now.isoformat(), job_id),
+                (starting_step, worker_id, lease_expires_at, now.isoformat(), job_id),
             )
             attempt_number = connection.execute(
                 "SELECT attempt_count FROM jobs WHERE id = ?", (job_id,)
@@ -304,9 +343,13 @@ class JobQueue:
             from .provider import ArtifactDraft
 
             drafts.append(ArtifactDraft(kind="log", path=log_path))
-        required = {"transcript", "subtitles", "metadata"}
+        required = (
+            {"transcript", "subtitles", "metadata"}
+            if job.source_type == "local-video"
+            else {"content", "metadata", "source_snapshot"}
+        )
         if not required.issubset({draft.kind for draft in drafts}):
-            raise ValueError("Provider did not produce all required transcription artifacts")
+            raise ValueError("Provider did not produce all required source artifacts")
         artifacts = [self._build_artifact(job, draft.kind, draft.path) for draft in drafts]
         now = datetime.now(UTC).isoformat()
         with self._connect() as connection:
@@ -352,15 +395,18 @@ class JobQueue:
     def fail(self, job_id: str, worker_id: str, error: str) -> None:
         job = self.get(job_id)
         now = datetime.now(UTC).isoformat()
+        failure_step = (
+            "Transcription failed" if job.source_type == "local-video" else "Ingestion failed"
+        )
         with self._connect() as connection:
             connection.execute(
                 """
                 UPDATE jobs
-                SET status = 'failed', current_step = 'Transcription failed', error = ?,
+                SET status = 'failed', current_step = ?, error = ?,
                     lease_owner = NULL, lease_expires_at = NULL, pid = NULL, updated_at = ?
                 WHERE id = ? AND lease_owner = ?
                 """,
-                (error, now, job_id, worker_id),
+                (failure_step, error, now, job_id, worker_id),
             )
             connection.execute(
                 """
@@ -449,10 +495,12 @@ class JobQueue:
         return self.get(job_id)
 
     def review(self, job_id: str, decision: str, note: str = "") -> Job:
+        job = self.get(job_id)
+        subject = "Transcript" if job.source_type == "local-video" else "Content"
         transitions = {
-            "approved": ("succeeded", "Transcript approved"),
+            "approved": ("succeeded", f"{subject} approved"),
             "changes_requested": ("changes_requested", "Changes requested"),
-            "rejected": ("rejected", "Transcript rejected"),
+            "rejected": ("rejected", f"{subject} rejected"),
         }
         if decision not in transitions:
             raise ValueError(f"Unknown review decision: {decision}")
@@ -503,9 +551,17 @@ class JobQueue:
             if job.pid is not None and process_is_alive(job.pid):
                 continue
             expected = (
-                ("transcript", job.output_dir / "transcript.txt"),
-                ("subtitles", job.output_dir / "transcript.srt"),
-                ("metadata", job.output_dir / "transcript.json"),
+                (
+                    ("transcript", job.output_dir / "transcript.txt"),
+                    ("subtitles", job.output_dir / "transcript.srt"),
+                    ("metadata", job.output_dir / "transcript.json"),
+                )
+                if job.source_type == "local-video"
+                else (
+                    ("content", job.output_dir / "content.md"),
+                    ("metadata", job.output_dir / "metadata.json"),
+                    ("source_snapshot", job.output_dir / "source.html"),
+                )
             )
             if all(path.is_file() and path.stat().st_size > 0 for _, path in expected):
                 from .provider import ArtifactDraft
@@ -697,7 +753,9 @@ class JobQueue:
                 """
                 CREATE TABLE IF NOT EXISTS jobs (
                     id TEXT PRIMARY KEY,
+                    source_type TEXT NOT NULL DEFAULT 'local-video',
                     source_path TEXT NOT NULL,
+                    source_url TEXT,
                     status TEXT NOT NULL,
                     output_dir TEXT NOT NULL,
                     params_json TEXT NOT NULL,
@@ -714,6 +772,16 @@ class JobQueue:
                 )
                 """
             )
+            job_columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(jobs)").fetchall()
+            }
+            if "source_type" not in job_columns:
+                connection.execute(
+                    "ALTER TABLE jobs ADD COLUMN source_type TEXT NOT NULL DEFAULT 'local-video'"
+                )
+            if "source_url" not in job_columns:
+                connection.execute("ALTER TABLE jobs ADD COLUMN source_url TEXT")
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS job_events (
@@ -797,7 +865,9 @@ class JobQueue:
     def _row_to_job(row: sqlite3.Row) -> Job:
         return Job(
             id=row["id"],
-            source_path=Path(row["source_path"]),
+            source_type=row["source_type"],
+            source_path=Path(row["source_path"]) if row["source_path"] else None,
+            source_url=row["source_url"],
             status=row["status"],
             output_dir=Path(row["output_dir"]),
             params=json.loads(row["params_json"]),

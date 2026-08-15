@@ -1,3 +1,5 @@
+import json
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -6,6 +8,72 @@ from app.queue import DuplicateJobError, InvalidSourcePathError, JobQueue
 
 
 class JobQueueTests(unittest.TestCase):
+    def test_existing_local_video_database_is_upgraded_in_place(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "workbench.db"
+            source = root / "legacy.mp4"
+            source.write_bytes(b"video")
+            with sqlite3.connect(database) as connection:
+                connection.execute(
+                    """
+                    CREATE TABLE jobs (
+                        id TEXT PRIMARY KEY,
+                        source_path TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        output_dir TEXT NOT NULL,
+                        params_json TEXT NOT NULL,
+                        progress REAL NOT NULL,
+                        current_step TEXT NOT NULL,
+                        attempt_count INTEGER NOT NULL,
+                        lease_owner TEXT,
+                        lease_expires_at TEXT,
+                        pid INTEGER,
+                        error TEXT,
+                        cancel_requested INTEGER NOT NULL,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    )
+                    """
+                )
+                connection.execute(
+                    """
+                    INSERT INTO jobs VALUES (
+                        'legacy', ?, 'succeeded', ?, ?, 1, 'Transcript approved',
+                        1, NULL, NULL, NULL, NULL, 0, ?, ?
+                    )
+                    """,
+                    (
+                        str(source),
+                        str(root / "runs" / "legacy"),
+                        json.dumps({"vad": "false"}),
+                        "2026-08-15T00:00:00+00:00",
+                        "2026-08-15T00:00:00+00:00",
+                    ),
+                )
+            connection.close()
+
+            queue = JobQueue(database, root / "runs", (root,))
+            migrated = queue.get("legacy")
+
+            self.assertEqual(migrated.source_type, "local-video")
+            self.assertEqual(migrated.source_path, source)
+            self.assertIsNone(migrated.source_url)
+
+    def test_job_queue_persists_web_source_without_local_path(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            queue = JobQueue(root / "workbench.db", root / "runs", ())
+
+            created = queue.submit_web("https://example.com/article")
+
+            self.assertEqual(created.source_type, "web-page")
+            self.assertEqual(created.source_url, "https://example.com/article")
+            self.assertIsNone(created.source_path)
+            self.assertEqual(queue.get(created.id), created)
+            with self.assertRaises(DuplicateJobError):
+                queue.submit_web("https://example.com/article")
+
     def test_retry_can_override_vad_parameter(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -149,6 +217,34 @@ class JobQueueTests(unittest.TestCase):
             self.assertEqual(recovered, 1)
             self.assertEqual(queue.get(claimed.id).status, "waiting_review")
             self.assertEqual(len(queue.list_artifacts(claimed.id)), 3)
+
+    def test_recovery_recognizes_completed_webpage_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            queue = JobQueue(root / "workbench.db", root / "runs", ())
+            queue.submit_web("https://example.com/article")
+            claimed = queue.claim_next("old-worker", lease_seconds=1)
+            assert claimed is not None
+            claimed.output_dir.mkdir(parents=True)
+            (claimed.output_dir / "content.md").write_text(
+                "# Article\n\nReadable content.",
+                encoding="utf-8",
+            )
+            (claimed.output_dir / "metadata.json").write_text("{}", encoding="utf-8")
+            (claimed.output_dir / "source.html").write_text(
+                "<html><body>Readable content.</body></html>",
+                encoding="utf-8",
+            )
+            queue.set_pid(claimed.id, "old-worker", 999_999)
+
+            recovered = queue.recover_running(lambda pid: False)
+
+            self.assertEqual(recovered, 1)
+            self.assertEqual(queue.get(claimed.id).status, "waiting_review")
+            self.assertEqual(
+                {artifact.kind for artifact in queue.list_artifacts(claimed.id)},
+                {"content", "metadata", "source_snapshot"},
+            )
 
     def test_status_changes_are_available_as_ordered_events(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

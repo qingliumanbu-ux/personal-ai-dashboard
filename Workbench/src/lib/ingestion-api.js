@@ -86,6 +86,6 @@ export async function loadTranscriptText(jobId, artifactId) {
     `${API_ROOT}/jobs/${encodeURIComponent(jobId)}/artifacts/${encodeURIComponent(artifactId)}`,
     { headers: { Accept: "text/plain" } },
   );
-  if (!response.ok) throw new Error("无法读取转写文本");
+  if (!response.ok) throw new Error("无法读取候选正文");
   return response.text();
 }

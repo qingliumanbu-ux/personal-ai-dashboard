@@ -1,8 +1,10 @@
 # Dashboard Ingestion Service
 
-This internal loopback service owns local source queuing, transcription, review decisions, and approved Raw publication. It has no standalone frontend; Dashboard reaches it through `/api/ingestion/*`.
+This internal loopback service owns local source queuing, webpage capture, video transcription, review decisions, and approved Raw publication. It has no standalone frontend; Dashboard reaches it through `/api/ingestion/*`.
 
-The service writes runtime queue data outside the repository. Publishing is a separate confirmed action after approval and writes one Markdown file to `04-来源资料/视频`; source media remains outside the Vault.
+The service writes runtime queue data outside the repository. Publishing is a separate confirmed action after approval and writes one Markdown file to `04-来源资料/视频` or `04-来源资料/网页`. Source media and raw HTML snapshots remain outside the Vault.
+
+Web capture accepts public `http` and `https` pages only. It rejects credentials in URLs, credential-like query parameters, non-standard ports, localhost, private/link-local/reserved addresses, unsafe redirects, non-HTML responses, and documents larger than 5 MB. It does not use browser login state.
 
 ## Development
 
