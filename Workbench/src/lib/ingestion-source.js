@@ -20,6 +20,16 @@ export function buildIngestionPayload({
       ...captureContext,
     };
   }
+  if (sourceType === "douyin") {
+    return {
+      source_type: "douyin",
+      source_text: normalized,
+      language: "zh",
+      model: "small",
+      vad: useVad && vadAvailable,
+      ...captureContext,
+    };
+  }
   return {
     source_type: "local-video",
     source_path: normalized,
@@ -59,6 +69,7 @@ export function ingestionCaptureContext(job) {
 }
 
 export function ingestionSourceName(job) {
+  if (job?.source_type === "douyin") return "抖音视频";
   if (job?.source_type === "web-page") {
     try {
       return new URL(job.source_url).hostname;
@@ -70,5 +81,7 @@ export function ingestionSourceName(job) {
 }
 
 export function ingestionSourceLocation(job) {
-  return job?.source_type === "web-page" ? job.source_url : job?.source_path;
+  return ["web-page", "douyin"].includes(job?.source_type)
+    ? job.source_url
+    : job?.source_path;
 }

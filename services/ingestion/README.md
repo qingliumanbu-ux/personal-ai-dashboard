@@ -8,6 +8,8 @@ Web capture accepts public `http` and `https` pages only. It rejects credentials
 
 Quick capture accepts either a public URL or platform share text containing a public URL. It extracts and de-duplicates the normalized URL while keeping optional tags, the capture reason, and the original share text in the runtime job. After approval, tags and the capture reason are included in the Raw Markdown; the original share text remains outside the Vault.
 
+Douyin capture accepts public share text or links from supported Douyin domains. It follows only Douyin page redirects, extracts public video metadata from the page, downloads the media into that job's Run directory, and reuses the configured local faster-whisper transcription provider. It does not use login state or cloud transcription. Image posts, login/verification pages, and unsupported page structures fail explicitly. Publishing writes reviewed Markdown only; the temporary video is never copied into the Vault.
+
 ## Development
 
 Create a service-specific virtual environment, install `requirements-dev.txt`, then run:

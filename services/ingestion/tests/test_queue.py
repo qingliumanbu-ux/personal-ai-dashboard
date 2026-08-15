@@ -246,6 +246,39 @@ class JobQueueTests(unittest.TestCase):
                 {"content", "metadata", "source_snapshot"},
             )
 
+    def test_recovery_recognizes_completed_douyin_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            queue = JobQueue(root / "workbench.db", root / "runs", ())
+            queue.submit_douyin("https://v.douyin.com/AbCdEf12/")
+            claimed = queue.claim_next("old-worker", lease_seconds=1)
+            assert claimed is not None
+            claimed.output_dir.mkdir(parents=True)
+            for name, content in (
+                ("transcript.txt", "transcript"),
+                ("transcript.srt", "subtitle"),
+                ("transcript.json", "{}"),
+                ("source.json", "{}"),
+            ):
+                (claimed.output_dir / name).write_text(content, encoding="utf-8")
+            (claimed.output_dir / "source.mp4").write_bytes(b"video")
+            queue.set_pid(claimed.id, "old-worker", 999_999)
+
+            recovered = queue.recover_running(lambda pid: False)
+
+            self.assertEqual(recovered, 1)
+            self.assertEqual(queue.get(claimed.id).status, "waiting_review")
+            self.assertEqual(
+                {artifact.kind for artifact in queue.list_artifacts(claimed.id)},
+                {
+                    "transcript",
+                    "subtitles",
+                    "metadata",
+                    "source_metadata",
+                    "source_media",
+                },
+            )
+
     def test_status_changes_are_available_as_ordered_events(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -27,6 +27,50 @@ class ApiFakeProvider:
 
 
 class ApiTests(unittest.TestCase):
+    def test_douyin_share_text_creates_a_queued_douyin_job(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = IngestionConfig.for_testing(root, ())
+            shared_text = (
+                "7.30 复制打开抖音，看看这个视频 "
+                "https://v.douyin.com/AbCdEf12/ 重点看知识采集流程"
+            )
+
+            with TestClient(create_app(config, start_worker=False)) as client:
+                created = client.post(
+                    "/api/jobs",
+                    json={
+                        "source_type": "douyin",
+                        "source_text": shared_text,
+                        "tags": ["抖音", "知识库"],
+                        "capture_reason": "补充采集方案",
+                    },
+                )
+
+            self.assertEqual(created.status_code, 201)
+            payload = created.json()
+            self.assertEqual(payload["source_type"], "douyin")
+            self.assertEqual(payload["status"], "queued")
+            self.assertEqual(payload["source_url"], "https://v.douyin.com/AbCdEf12/")
+            self.assertEqual(payload["params"]["capture_text"], shared_text)
+
+    def test_douyin_source_rejects_non_douyin_links(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = IngestionConfig.for_testing(root, ())
+
+            with TestClient(create_app(config, start_worker=False)) as client:
+                rejected = client.post(
+                    "/api/jobs",
+                    json={
+                        "source_type": "douyin",
+                        "source_text": "伪装分享 https://example.com/video/123",
+                    },
+                )
+
+            self.assertEqual(rejected.status_code, 400)
+            self.assertIn("不是受支持的抖音公开链接", rejected.json()["detail"])
+
     def test_shared_text_creates_a_queued_job_with_capture_context(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -118,6 +162,13 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(
                 health.json()["capabilities"]["vad"],
                 {"available": False, "reason": "onnxruntime could not be loaded"},
+            )
+            self.assertEqual(
+                health.json()["capabilities"]["douyin"],
+                {
+                    "available": True,
+                    "reason": "仅支持无需登录即可访问的公开抖音视频",
+                },
             )
             self.assertEqual(rejected.status_code, 422)
             self.assertEqual(accepted.status_code, 201)

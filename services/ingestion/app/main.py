@@ -15,6 +15,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from .config import IngestionConfig
+from .douyin import DouyinProvider, InvalidDouyinSourceError, extract_douyin_url
 from .provider import (
     FasterWhisperProvider,
     RoutingProvider,
@@ -41,7 +42,7 @@ from .worker import Worker
 
 
 class CreateJobRequest(BaseModel):
-    source_type: Literal["local-video", "web-page"] = "local-video"
+    source_type: Literal["local-video", "web-page", "douyin"] = "local-video"
     source_path: str | None = None
     source_url: str | None = None
     source_text: str | None = None
@@ -84,16 +85,21 @@ def create_app(
     async def lifespan(_: FastAPI):
         nonlocal worker_thread
         if start_worker:
-            active_provider = provider or RoutingProvider(
-                {
-                    "local-video": FasterWhisperProvider(
-                        config.transcription_python,
-                        config.transcription_script,
-                        config.model_dir,
-                    ),
-                    "web-page": WebPageProvider(),
-                }
-            )
+            if provider is not None:
+                active_provider = provider
+            else:
+                local_transcriber = FasterWhisperProvider(
+                    config.transcription_python,
+                    config.transcription_script,
+                    config.model_dir,
+                )
+                active_provider = RoutingProvider(
+                    {
+                        "local-video": local_transcriber,
+                        "web-page": WebPageProvider(),
+                        "douyin": DouyinProvider(local_transcriber),
+                    }
+                )
             worker = Worker(queue, active_provider, "local-worker")
             worker_thread = threading.Thread(
                 target=worker.run_forever,
@@ -147,6 +153,10 @@ def create_app(
                     "reason": active_vad_capability.reason,
                 },
                 "web_page": {"available": True, "reason": None},
+                "douyin": {
+                    "available": True,
+                    "reason": "仅支持无需登录即可访问的公开抖音视频",
+                },
             },
         }
 
@@ -170,7 +180,7 @@ def create_app(
                 detail="VAD is only available for local video sources",
             )
         if (
-            payload.source_type == "local-video"
+            payload.source_type in {"local-video", "douyin"}
             and payload.vad
             and not active_vad_capability.available
         ):
@@ -180,14 +190,30 @@ def create_app(
             )
         try:
             capture_params = _capture_params(payload)
-            if payload.source_type == "web-page":
+            if payload.source_type in {"web-page", "douyin"}:
                 source_text = payload.source_text or payload.source_url
                 if source_text is None:
-                    raise InvalidWebSourceError("Web URL is required")
-                source_url = extract_shared_url(source_text)
+                    raise InvalidWebSourceError("Source URL is required")
+                source_url = (
+                    extract_douyin_url(source_text)
+                    if payload.source_type == "douyin"
+                    else extract_shared_url(source_text)
+                )
                 if source_text.strip() != source_url:
                     capture_params["capture_text"] = source_text.strip()
-                job = queue.submit_web(source_url, capture_params)
+                if payload.source_type == "douyin":
+                    capture_params.update(
+                        {
+                            "language": payload.language,
+                            "model": payload.model,
+                            "vad": "true" if payload.vad else "false",
+                        }
+                    )
+                job = (
+                    queue.submit_douyin(source_url, capture_params)
+                    if payload.source_type == "douyin"
+                    else queue.submit_web(source_url, capture_params)
+                )
             else:
                 if payload.source_path is None:
                     raise InvalidSourcePathError("Local source path is required")
@@ -206,6 +232,8 @@ def create_app(
                 detail="路径不在批准的来源目录内，或文件不存在。",
             ) from error
         except InvalidWebSourceError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        except InvalidDouyinSourceError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
         except DuplicateJobError as error:
             raise HTTPException(

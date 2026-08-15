@@ -131,6 +131,17 @@ class JobQueue:
             params=params,
         )
 
+    def submit_douyin(self, source_url: str, params: dict[str, str] | None = None) -> Job:
+        normalized_url = source_url.strip()
+        if not normalized_url:
+            raise ValueError("Douyin source URL is required")
+        return self._submit(
+            source_type="douyin",
+            source_path=None,
+            source_url=normalized_url,
+            params=params,
+        )
+
     def _submit(
         self,
         source_type: str,
@@ -343,11 +354,18 @@ class JobQueue:
             from .provider import ArtifactDraft
 
             drafts.append(ArtifactDraft(kind="log", path=log_path))
-        required = (
-            {"transcript", "subtitles", "metadata"}
-            if job.source_type == "local-video"
-            else {"content", "metadata", "source_snapshot"}
-        )
+        if job.source_type == "local-video":
+            required = {"transcript", "subtitles", "metadata"}
+        elif job.source_type == "douyin":
+            required = {
+                "transcript",
+                "subtitles",
+                "metadata",
+                "source_media",
+                "source_metadata",
+            }
+        else:
+            required = {"content", "metadata", "source_snapshot"}
         if not required.issubset({draft.kind for draft in drafts}):
             raise ValueError("Provider did not produce all required source artifacts")
         artifacts = [self._build_artifact(job, draft.kind, draft.path) for draft in drafts]
@@ -496,7 +514,11 @@ class JobQueue:
 
     def review(self, job_id: str, decision: str, note: str = "") -> Job:
         job = self.get(job_id)
-        subject = "Transcript" if job.source_type == "local-video" else "Content"
+        subject = (
+            "Transcript"
+            if job.source_type in {"local-video", "douyin"}
+            else "Content"
+        )
         transitions = {
             "approved": ("succeeded", f"{subject} approved"),
             "changes_requested": ("changes_requested", "Changes requested"),
@@ -550,19 +572,26 @@ class JobQueue:
             job = self._row_to_job(row)
             if job.pid is not None and process_is_alive(job.pid):
                 continue
-            expected = (
-                (
+            if job.source_type == "local-video":
+                expected = (
                     ("transcript", job.output_dir / "transcript.txt"),
                     ("subtitles", job.output_dir / "transcript.srt"),
                     ("metadata", job.output_dir / "transcript.json"),
                 )
-                if job.source_type == "local-video"
-                else (
+            elif job.source_type == "douyin":
+                expected = (
+                    ("transcript", job.output_dir / "transcript.txt"),
+                    ("subtitles", job.output_dir / "transcript.srt"),
+                    ("metadata", job.output_dir / "transcript.json"),
+                    ("source_metadata", job.output_dir / "source.json"),
+                    ("source_media", job.output_dir / "source.mp4"),
+                )
+            else:
+                expected = (
                     ("content", job.output_dir / "content.md"),
                     ("metadata", job.output_dir / "metadata.json"),
                     ("source_snapshot", job.output_dir / "source.html"),
                 )
-            )
             if all(path.is_file() and path.stat().st_size > 0 for _, path in expected):
                 from .provider import ArtifactDraft
 

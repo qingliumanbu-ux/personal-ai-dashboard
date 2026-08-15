@@ -54,6 +54,36 @@ test("web submissions send a URL without video-only options", () => {
   assert.equal(ingestionSourceLocation(job), job.source_url);
 });
 
+test("douyin submissions keep share text and local transcription options", () => {
+  const job = {
+    source_type: "douyin",
+    source_path: null,
+    source_url: "https://v.douyin.com/AbCdEf12/",
+  };
+
+  assert.deepEqual(
+    buildIngestionPayload({
+      sourceType: "douyin",
+      value: " 复制打开抖音 https://v.douyin.com/AbCdEf12/ 看完整视频 ",
+      useVad: true,
+      vadAvailable: true,
+      captureTags: "知识库, 抖音",
+      captureReason: "稍后审核",
+    }),
+    {
+      source_type: "douyin",
+      source_text: "复制打开抖音 https://v.douyin.com/AbCdEf12/ 看完整视频",
+      language: "zh",
+      model: "small",
+      vad: true,
+      tags: ["知识库", "抖音"],
+      capture_reason: "稍后审核",
+    },
+  );
+  assert.equal(ingestionSourceName(job), "抖音视频");
+  assert.equal(ingestionSourceLocation(job), job.source_url);
+});
+
 test("capture context is normalized for submission and display", () => {
   assert.deepEqual(parseCaptureTags("AI，Obsidian\nAI；网页"), [
     "AI",

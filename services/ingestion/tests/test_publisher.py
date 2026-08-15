@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -25,6 +26,64 @@ class FakeProvider:
 
 
 class PublisherTests(unittest.TestCase):
+    def test_approved_douyin_video_publishes_markdown_without_media(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            queue = JobQueue(root / "runtime" / "ingestion.db", root / "runs", ())
+            job = queue.submit_douyin(
+                "https://v.douyin.com/AbCdEf12/",
+                {"capture_reason": "补充知识采集方案"},
+            )
+
+            class FakeDouyinProvider:
+                def run(self, queued_job, control) -> ProviderResult:
+                    queued_job.output_dir.mkdir(parents=True)
+                    files = (
+                        ("transcript", "transcript.txt", "抖音视频的本地转写正文。"),
+                        ("subtitles", "transcript.srt", "subtitle"),
+                        ("metadata", "transcript.json", "{}"),
+                        ("source_media", "source.mp4", b"temporary-video"),
+                        (
+                            "source_metadata",
+                            "source.json",
+                            json.dumps(
+                                {
+                                    "source_type": "douyin-video",
+                                    "video_id": "1234567890",
+                                    "title": "收藏夹知识库方案",
+                                    "final_url": "https://www.iesdouyin.com/share/video/1234567890",
+                                    "captured_at": "2026-08-15T00:00:00+00:00",
+                                },
+                                ensure_ascii=False,
+                            ),
+                        ),
+                    )
+                    drafts = []
+                    for kind, name, content in files:
+                        path = queued_job.output_dir / name
+                        if isinstance(content, bytes):
+                            path.write_bytes(content)
+                        else:
+                            path.write_text(content, encoding="utf-8")
+                        drafts.append(ArtifactDraft(kind, path))
+                    return ProviderResult(tuple(drafts), None)
+
+            Worker(queue, FakeDouyinProvider(), "worker-a").run_once()
+            queue.review(job.id, "approved", "内容通过")
+            vault = root / "vault"
+            vault.mkdir()
+
+            publication = Publisher(queue, vault).publish(job.id)
+
+            target = vault / Path(publication.relative_path)
+            markdown = target.read_text(encoding="utf-8")
+            self.assertTrue(publication.relative_path.startswith("04-来源资料/视频/"))
+            self.assertIn("source_type: douyin-video", markdown)
+            self.assertIn('source_url: "https://v.douyin.com/AbCdEf12/"', markdown)
+            self.assertIn("# 收藏夹知识库方案", markdown)
+            self.assertIn("抖音视频的本地转写正文。", markdown)
+            self.assertEqual(list(vault.rglob("*.mp4")), [])
+
     def test_approved_webpage_publishes_to_raw_web_layer(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

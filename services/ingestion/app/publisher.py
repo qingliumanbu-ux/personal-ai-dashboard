@@ -123,6 +123,8 @@ class Publisher:
         artifacts = {artifact.kind: artifact for artifact in self.queue.list_artifacts(job_id)}
         if job.source_type == "web-page":
             return self._build_web_publication(job, review, artifacts)
+        if job.source_type == "douyin":
+            return self._build_douyin_publication(job, review, artifacts)
         transcript = artifacts.get("transcript")
         if transcript is None:
             raise PublicationStateError("Approved job has no transcript artifact")
@@ -233,6 +235,78 @@ class Publisher:
                 "## 网页正文",
                 "",
                 body,
+                "",
+            )
+        )
+        payload = markdown.encode("utf-8")
+        content_sha256 = hashlib.sha256(payload).hexdigest()
+        return (
+            PublicationPreview(publication_id, job.id, relative_path),
+            payload,
+            source_sha256,
+            content_sha256,
+        )
+
+    def _build_douyin_publication(self, job, review, artifacts):
+        transcript = artifacts.get("transcript")
+        source_media = artifacts.get("source_media")
+        source_metadata = artifacts.get("source_metadata")
+        if transcript is None or source_media is None or source_metadata is None:
+            raise PublicationStateError("Approved Douyin job is missing source artifacts")
+        if not job.source_url:
+            raise PublicationStateError("Douyin job has no source URL")
+        transcript_text = transcript.path.read_text(encoding="utf-8").strip()
+        if not transcript_text:
+            raise PublicationStateError("Transcript artifact is empty")
+        try:
+            metadata_payload = json.loads(source_metadata.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as error:
+            raise PublicationStateError("Douyin source metadata artifact is invalid") from error
+
+        video_id = str(metadata_payload.get("video_id") or "").strip()
+        title = str(metadata_payload.get("title") or "未命名抖音视频").strip()[:200]
+        final_url = str(metadata_payload.get("final_url") or job.source_url)
+        captured_at = str(metadata_payload.get("captured_at") or "")
+        source_sha256 = source_media.sha256
+        identity = "\0".join(
+            ("raw-douyin-video-v1", job.id, job.source_url, source_sha256, transcript.sha256)
+        ).encode("utf-8")
+        publication_id = hashlib.sha256(identity).hexdigest()[:24]
+        filename = f"{_safe_filename(title)}-{publication_id[:8]}.md"
+        relative_path = (RAW_VIDEO_DIRECTORY / filename).as_posix()
+        capture_frontmatter, capture_body = _capture_markdown(job.params)
+        markdown = "\n".join(
+            (
+                "---",
+                "type: raw-source",
+                "source_type: douyin-video",
+                "status: reviewed",
+                "review_decision: approved",
+                f"publication_id: {json.dumps(publication_id)}",
+                f"source_url: {json.dumps(job.source_url, ensure_ascii=False)}",
+                f"final_url: {json.dumps(final_url, ensure_ascii=False)}",
+                f"video_id: {json.dumps(video_id, ensure_ascii=False)}",
+                f"source_sha256: {json.dumps(source_sha256)}",
+                f"transcript_sha256: {json.dumps(transcript.sha256)}",
+                f"captured_at: {json.dumps(captured_at)}",
+                f"published_at: {json.dumps(review.created_at)}",
+                *capture_frontmatter,
+                "---",
+                "",
+                f"# {title}",
+                "",
+                "## 来源",
+                "",
+                "- 类型：公开抖音视频",
+                f"- 原链接：{job.source_url}",
+                f"- 视频 ID：`{video_id}`",
+                f"- 采集时间：{captured_at}",
+                "- 媒体保留：仅保存在任务 Run 目录，不复制到知识库",
+                "",
+                *capture_body,
+                "## 全文转写",
+                "",
+                transcript_text,
                 "",
             )
         )

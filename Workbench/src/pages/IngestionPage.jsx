@@ -74,12 +74,18 @@ function stepLabel(value = "", sourceType = "local-video") {
     "Fetching webpage": "正在抓取网页",
     "Extracting webpage content": "正在提取网页正文",
     "Validating webpage artifacts": "正在校验网页产物",
+    "Resolving Douyin post": "正在解析抖音帖子",
+    "Downloading Douyin video": "正在下载抖音临时视频",
+    "Starting local transcription": "正在启动本地转写",
     "Ingestion failed": "采集失败",
     "Cancellation requested": "正在取消",
     Cancelled: "已取消",
   };
   if (value.startsWith("Transcribing ")) {
     return `正在转写 ${value.slice("Transcribing ".length)}`;
+  }
+  if (value.startsWith("Downloading Douyin video ")) {
+    return `正在下载抖音临时视频 ${value.slice("Downloading Douyin video ".length)}`;
   }
   if (value === "Ready for review" && sourceType === "web-page") {
     return "网页正文已提取，等待审核";
@@ -131,7 +137,7 @@ export function IngestionPage() {
   const [selectedId, setSelectedId] = useState(null);
   const [detail, setDetail] = useState(null);
   const [filter, setFilter] = useState("all");
-  const [sourceType, setSourceType] = useState("web-page");
+  const [sourceType, setSourceType] = useState("douyin");
   const [sourceValue, setSourceValue] = useState("");
   const [captureTags, setCaptureTags] = useState("");
   const [captureReason, setCaptureReason] = useState("");
@@ -147,6 +153,8 @@ export function IngestionPage() {
   const vadCapability = serviceHealth?.capabilities?.vad;
   const vadAvailable = vadCapability?.available !== false;
   const isWebSource = sourceType === "web-page";
+  const isDouyinSource = sourceType === "douyin";
+  const isTextSource = isWebSource || isDouyinSource;
 
   const refresh = useCallback(async () => {
     try {
@@ -251,7 +259,7 @@ export function IngestionPage() {
       <PageHeader
         eyebrow="INGESTION DESK"
         title="采集与审核"
-        description="粘贴分享文本或公开网页，或投递本地视频。审核正文后，再明确发布为来源资料。"
+        description="粘贴抖音分享文案、公开网页或本地视频。统一经过本地处理、人工审核和明确发布。"
         aside={(
           <span className={`ingestion-service ingestion-service--${serviceOnline ? "online" : "offline"}`}>
             <span />
@@ -262,7 +270,7 @@ export function IngestionPage() {
 
       <form className="ingestion-submit" onSubmit={submit}>
         <div className="ingestion-submit__mark">
-          {isWebSource ? <IconWorld aria-hidden="true" /> : <IconUpload aria-hidden="true" />}
+          {isWebSource ? <IconWorld aria-hidden="true" /> : isDouyinSource ? <IconPlayerPlay aria-hidden="true" /> : <IconUpload aria-hidden="true" />}
         </div>
         <label className="ingestion-source-type">
           <span>来源类型</span>
@@ -274,18 +282,19 @@ export function IngestionPage() {
             }}
             value={sourceType}
           >
+            <option value="douyin">抖音分享</option>
             <option value="web-page">网页链接</option>
             <option value="local-video">本地视频</option>
           </select>
         </label>
         <label className="ingestion-source-value">
-          <span>{isWebSource ? "网页链接或分享文本" : "视频文件路径"}</span>
-          {isWebSource ? (
+          <span>{isDouyinSource ? "抖音链接或分享文案" : isWebSource ? "网页链接或分享文本" : "视频文件路径"}</span>
+          {isTextSource ? (
             <textarea
               disabled={!serviceOnline || busy}
               maxLength="4000"
               onChange={(event) => setSourceValue(event.target.value)}
-              placeholder="粘贴网页链接，或包含链接的平台分享文本"
+              placeholder={isDouyinSource ? "粘贴抖音分享文案或公开链接" : "粘贴网页链接，或包含链接的平台分享文本"}
               rows="2"
               value={sourceValue}
             />
@@ -301,7 +310,7 @@ export function IngestionPage() {
         </label>
         <button disabled={!serviceOnline || busy || !sourceValue.trim()} type="submit">
           <IconSend aria-hidden="true" />
-          {isWebSource ? "采集网页" : "投递视频"}
+          {isDouyinSource ? "采集抖音" : isWebSource ? "采集网页" : "投递视频"}
         </button>
         <div className="ingestion-submit__context">
           <label>
@@ -335,6 +344,7 @@ export function IngestionPage() {
             />
             <span>{vadAvailable ? "过滤静音" : "静音过滤暂不可用"}</span>
           </label> : <span className="ingestion-web-note">自动提取首个公开链接，不使用登录态</span>}
+          {isDouyinSource ? <span className="ingestion-web-note">媒体仅临时保存在 Run 目录，不上传云端</span> : null}
         </div>
       </form>
 
@@ -395,7 +405,7 @@ export function IngestionPage() {
               <div className="ingestion-empty">
                 <IconFileText aria-hidden="true" />
                 <strong>{jobs.length ? "这个筛选下没有任务" : "还没有采集任务"}</strong>
-                <span>在上方粘贴分享文本、网页链接或本地视频路径，任务会出现在这里。</span>
+                <span>在上方粘贴抖音分享文案、网页链接或本地视频路径，任务会出现在这里。</span>
               </div>
             ) : null}
           </div>
@@ -524,12 +534,12 @@ export function IngestionPage() {
                       disabled={busy}
                       onClick={() => runAction(() => retryIngestionJob(
                         detail.id,
-                        detail.source_type === "local-video" && detail.params?.vad === "true" && !vadAvailable ? false : undefined,
+                        ["local-video", "douyin"].includes(detail.source_type) && detail.params?.vad === "true" && !vadAvailable ? false : undefined,
                       ))}
                       type="button"
                     >
                       <IconRefresh />
-                      {detail.source_type === "local-video" && detail.params?.vad === "true" && !vadAvailable
+                      {["local-video", "douyin"].includes(detail.source_type) && detail.params?.vad === "true" && !vadAvailable
                         ? "关闭静音过滤后重试"
                         : "重新排队"}
                     </button>
