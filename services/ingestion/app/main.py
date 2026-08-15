@@ -4,6 +4,7 @@ import asyncio
 import json
 import threading
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
@@ -36,6 +37,7 @@ from .queue import (
     Job,
     JobNotFoundError,
     JobQueue,
+    MediaRetention,
     Publication,
 )
 from .worker import Worker
@@ -65,6 +67,11 @@ class ReviewJobRequest(BaseModel):
 
 
 class PublishJobRequest(BaseModel):
+    confirm: bool = False
+
+
+class MediaRetentionRequest(BaseModel):
+    policy: Literal["delete_now", "keep_30_days", "keep_forever"]
     confirm: bool = False
 
 
@@ -315,6 +322,32 @@ def create_app(
                 else None
             )
             payload["publication_blocker"] = publication_blocker
+            retention = queue.get_media_retention(job_id)
+            source_media = next(
+                (
+                    artifact
+                    for artifact in queue.list_artifacts(job_id)
+                    if artifact.kind == "source_media"
+                ),
+                None,
+            )
+            if retention is not None:
+                payload["media_retention"] = _media_retention_payload(
+                    retention,
+                    media_present=source_media is not None and source_media.path.is_file(),
+                )
+            elif job.source_type == "douyin" and source_media is not None:
+                payload["media_retention"] = {
+                    "policy": None,
+                    "state": "unconfigured",
+                    "source_sha256": source_media.sha256,
+                    "source_size": source_media.size,
+                    "delete_after": None,
+                    "cleaned_at": None,
+                    "media_present": source_media.path.is_file(),
+                }
+            else:
+                payload["media_retention"] = None
             return payload
         except JobNotFoundError as error:
             raise HTTPException(status_code=404, detail="Job not found") from error
@@ -430,6 +463,25 @@ def create_app(
         ) as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
 
+    @app.post("/api/jobs/{job_id}/media-retention")
+    def configure_media_retention(job_id: str, payload: MediaRetentionRequest) -> dict:
+        if not payload.confirm:
+            raise HTTPException(
+                status_code=400,
+                detail="Explicit media retention confirmation is required",
+            )
+        try:
+            retention = queue.configure_media_retention(job_id, payload.policy)
+            source_media_present = any(
+                artifact.kind == "source_media" and artifact.path.is_file()
+                for artifact in queue.list_artifacts(job_id)
+            )
+            return _media_retention_payload(retention, source_media_present)
+        except JobNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Job not found") from error
+        except (OSError, ValueError) as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
     @app.get("/api/jobs/{job_id}/artifacts/{artifact_id}")
     def download_artifact(job_id: str, artifact_id: str) -> FileResponse:
         try:
@@ -538,6 +590,28 @@ def _publication_payload(publication: Publication) -> dict:
         "content_sha256": publication.content_sha256,
         "relative_path": publication.relative_path,
         "created_at": publication.created_at,
+    }
+
+
+def _media_retention_payload(
+    retention: MediaRetention,
+    media_present: bool,
+) -> dict:
+    state = "cleaned" if retention.cleaned_at is not None else "retained"
+    if state == "retained" and retention.delete_after is not None:
+        delete_after = datetime.fromisoformat(retention.delete_after)
+        if delete_after.tzinfo is None:
+            delete_after = delete_after.replace(tzinfo=UTC)
+        if delete_after <= datetime.now(UTC):
+            state = "due"
+    return {
+        "policy": retention.policy,
+        "state": state,
+        "source_sha256": retention.source_sha256,
+        "source_size": retention.source_size,
+        "delete_after": retention.delete_after,
+        "cleaned_at": retention.cleaned_at,
+        "media_present": media_present,
     }
 
 

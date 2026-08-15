@@ -71,6 +71,18 @@ class Publication:
 
 
 @dataclass(frozen=True)
+class MediaRetention:
+    job_id: str
+    policy: str
+    source_sha256: str
+    source_size: int
+    delete_after: str | None
+    cleaned_at: str | None
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
 class JobEvent:
     id: int
     job_id: str
@@ -802,6 +814,103 @@ class JobQueue:
             ).fetchone()
         return self._row_to_publication(row) if row is not None else None
 
+    def get_media_retention(self, job_id: str) -> MediaRetention | None:
+        self.get(job_id)
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT job_id, policy, source_sha256, source_size, delete_after,
+                       cleaned_at, created_at, updated_at
+                FROM media_retention WHERE job_id = ?
+                """,
+                (job_id,),
+            ).fetchone()
+        return self._row_to_media_retention(row) if row is not None else None
+
+    def configure_media_retention(self, job_id: str, policy: str) -> MediaRetention:
+        if policy not in {"delete_now", "keep_30_days", "keep_forever"}:
+            raise ValueError(f"Unknown media retention policy: {policy}")
+
+        job = self.get(job_id)
+        if job.source_type != "douyin":
+            raise ValueError("Media retention is only available for Douyin videos")
+        if self.get_publication(job_id) is None:
+            raise ValueError("Only a published Douyin video can configure media retention")
+
+        existing = self.get_media_retention(job_id)
+        if existing is not None and existing.cleaned_at is not None:
+            if policy == "delete_now":
+                return existing
+            raise ValueError("Cleaned source media cannot be retained again")
+
+        source_media = next(
+            (artifact for artifact in self.list_artifacts(job_id) if artifact.kind == "source_media"),
+            None,
+        )
+        if source_media is None:
+            raise ValueError("Published job has no removable Douyin source video")
+        source_path = source_media.path.resolve(strict=True)
+        output_dir = job.output_dir.resolve(strict=True)
+        if output_dir not in source_path.parents or not source_path.is_file():
+            raise ValueError("Source media is outside the task Run directory")
+
+        now = datetime.now(UTC)
+        now_text = now.isoformat()
+        delete_after = None
+        if policy == "keep_30_days":
+            delete_after = (now + timedelta(days=30)).isoformat()
+        cleaned_at = now_text if policy == "delete_now" else None
+        created_at = existing.created_at if existing is not None else now_text
+
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                """
+                INSERT INTO media_retention (
+                    job_id, policy, source_sha256, source_size, delete_after,
+                    cleaned_at, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(job_id) DO UPDATE SET
+                    policy = excluded.policy,
+                    source_sha256 = excluded.source_sha256,
+                    source_size = excluded.source_size,
+                    delete_after = excluded.delete_after,
+                    cleaned_at = excluded.cleaned_at,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    job_id,
+                    policy,
+                    source_media.sha256,
+                    source_media.size,
+                    delete_after,
+                    cleaned_at,
+                    created_at,
+                    now_text,
+                ),
+            )
+            if policy == "delete_now":
+                source_path.unlink()
+                connection.execute(
+                    "DELETE FROM artifacts WHERE id = ? AND job_id = ?",
+                    (source_media.id, job_id),
+                )
+            self._insert_event(
+                connection,
+                job_id,
+                "media_retention_updated",
+                {
+                    "policy": policy,
+                    "source_sha256": source_media.sha256,
+                    "source_size": source_media.size,
+                    "delete_after": delete_after,
+                    "cleaned_at": cleaned_at,
+                },
+            )
+        retention = self.get_media_retention(job_id)
+        assert retention is not None
+        return retention
+
     def record_publication(self, publication: Publication) -> Publication:
         try:
             with self._connect() as connection:
@@ -955,6 +1064,20 @@ class JobQueue:
                 )
                 """
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS media_retention (
+                    job_id TEXT PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+                    policy TEXT NOT NULL,
+                    source_sha256 TEXT NOT NULL,
+                    source_size INTEGER NOT NULL,
+                    delete_after TEXT,
+                    cleaned_at TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -1003,6 +1126,19 @@ class JobQueue:
             content_sha256=row["content_sha256"],
             relative_path=row["relative_path"],
             created_at=row["created_at"],
+        )
+
+    @staticmethod
+    def _row_to_media_retention(row: sqlite3.Row) -> MediaRetention:
+        return MediaRetention(
+            job_id=row["job_id"],
+            policy=row["policy"],
+            source_sha256=row["source_sha256"],
+            source_size=int(row["source_size"]),
+            delete_after=row["delete_after"],
+            cleaned_at=row["cleaned_at"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
         )
 
     @staticmethod

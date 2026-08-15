@@ -48,6 +48,36 @@ class ApiFakeProvider:
         return ProviderResult(tuple(drafts), None)
 
 
+class ApiFakeDouyinVideoProvider:
+    def run(self, job, control) -> ProviderResult:
+        job.output_dir.mkdir(parents=True, exist_ok=True)
+        drafts = []
+        for kind, name, content in (
+            ("transcript", "transcript.txt", b"douyin transcript"),
+            ("subtitles", "transcript.srt", b"subtitle"),
+            ("metadata", "transcript.json", b"{}"),
+            ("source_media", "source.mp4", b"temporary-video"),
+            (
+                "source_metadata",
+                "source.json",
+                json.dumps(
+                    {
+                        "source_type": "douyin-video",
+                        "video_id": "123456",
+                        "title": "测试抖音视频",
+                        "final_url": job.source_url,
+                        "captured_at": "2026-08-15T10:00:00+08:00",
+                    },
+                    ensure_ascii=False,
+                ).encode("utf-8"),
+            ),
+        ):
+            path = job.output_dir / name
+            path.write_bytes(content)
+            drafts.append(ArtifactDraft(kind, path))
+        return ProviderResult(tuple(drafts), None)
+
+
 class ApiTests(unittest.TestCase):
     def test_douyin_share_text_creates_a_queued_douyin_job(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -488,6 +518,154 @@ class ApiTests(unittest.TestCase):
             markdown = published_path.read_text(encoding="utf-8")
             self.assertIn("## AI 候选摘要", markdown)
             self.assertIn("## 全文转写", markdown)
+
+    def test_published_douyin_video_supports_confirmed_media_retention(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = IngestionConfig.for_testing(root, ())
+            config.vault_root.mkdir()
+            app = create_app(config, start_worker=False)
+
+            with TestClient(app) as client:
+                created = client.post(
+                    "/api/jobs",
+                    json={
+                        "source_type": "douyin",
+                        "source_url": "https://www.douyin.com/video/123456",
+                    },
+                ).json()
+                Worker(
+                    app.state.queue,
+                    ApiFakeDouyinVideoProvider(),
+                    "worker-a",
+                ).run_once()
+                client.post(
+                    f"/api/jobs/{created['id']}/candidate-summary",
+                    json={"content": VALID_SUMMARY},
+                )
+                client.post(
+                    f"/api/jobs/{created['id']}/review",
+                    json={"decision": "approved", "note": "内容通过"},
+                )
+                blocked_before_publish = client.post(
+                    f"/api/jobs/{created['id']}/media-retention",
+                    json={"policy": "keep_30_days", "confirm": True},
+                )
+                client.post(
+                    f"/api/jobs/{created['id']}/publish",
+                    json={"confirm": True},
+                )
+                missing_confirmation = client.post(
+                    f"/api/jobs/{created['id']}/media-retention",
+                    json={"policy": "keep_30_days", "confirm": False},
+                )
+                permanent = client.post(
+                    f"/api/jobs/{created['id']}/media-retention",
+                    json={"policy": "keep_forever", "confirm": True},
+                )
+                retained = client.post(
+                    f"/api/jobs/{created['id']}/media-retention",
+                    json={"policy": "keep_30_days", "confirm": True},
+                )
+                cleaned = client.post(
+                    f"/api/jobs/{created['id']}/media-retention",
+                    json={"policy": "delete_now", "confirm": True},
+                )
+                repeated = client.post(
+                    f"/api/jobs/{created['id']}/media-retention",
+                    json={"policy": "delete_now", "confirm": True},
+                )
+                detail = client.get(f"/api/jobs/{created['id']}").json()
+
+            self.assertEqual(blocked_before_publish.status_code, 409)
+            self.assertEqual(missing_confirmation.status_code, 400)
+            self.assertEqual(permanent.status_code, 200)
+            self.assertEqual(permanent.json()["policy"], "keep_forever")
+            self.assertIsNone(permanent.json()["delete_after"])
+            self.assertEqual(retained.status_code, 200)
+            self.assertEqual(retained.json()["policy"], "keep_30_days")
+            self.assertEqual(retained.json()["state"], "retained")
+            self.assertTrue(retained.json()["media_present"])
+            self.assertIsNotNone(retained.json()["delete_after"])
+            self.assertEqual(cleaned.status_code, 200)
+            self.assertEqual(cleaned.json()["policy"], "delete_now")
+            self.assertEqual(cleaned.json()["state"], "cleaned")
+            self.assertFalse(cleaned.json()["media_present"])
+            self.assertIsNotNone(cleaned.json()["cleaned_at"])
+            self.assertEqual(repeated.json(), cleaned.json())
+            self.assertNotIn(
+                "source_media",
+                {artifact["kind"] for artifact in detail["artifacts"]},
+            )
+            self.assertIn(
+                "transcript",
+                {artifact["kind"] for artifact in detail["artifacts"]},
+            )
+
+    def test_media_retention_never_deletes_douyin_image_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = IngestionConfig.for_testing(root, ())
+            config.vault_root.mkdir()
+            app = create_app(config, start_worker=False)
+            queue = app.state.queue
+            job = queue.submit_douyin("https://www.douyin.com/note/987654")
+            claimed = queue.claim_next("worker-a", lease_seconds=30)
+            assert claimed is not None
+            claimed.output_dir.mkdir(parents=True)
+            content = claimed.output_dir / "content.md"
+            metadata = claimed.output_dir / "source.json"
+            image = claimed.output_dir / "001.webp"
+            content.write_text("# 测试图文\n\n图文正文。", encoding="utf-8")
+            metadata.write_text(
+                json.dumps(
+                    {
+                        "source_type": "douyin-image",
+                        "post_id": "987654",
+                        "title": "测试图文",
+                        "final_url": job.source_url,
+                        "captured_at": "2026-08-15T10:00:00+08:00",
+                        "images": [{"url": "https://p3-sign.douyinpic.com/image-1"}],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            image.write_bytes(b"synthetic-image")
+            queue.complete(
+                job.id,
+                "worker-a",
+                (
+                    ArtifactDraft("content", content),
+                    ArtifactDraft("source_metadata", metadata),
+                    ArtifactDraft("source_image_001", image),
+                ),
+                None,
+            )
+
+            with TestClient(app) as client:
+                client.post(
+                    f"/api/jobs/{job.id}/candidate-summary",
+                    json={"content": VALID_SUMMARY},
+                )
+                client.post(
+                    f"/api/jobs/{job.id}/review",
+                    json={"decision": "approved", "note": "内容通过"},
+                )
+                client.post(f"/api/jobs/{job.id}/publish", json={"confirm": True})
+                rejected = client.post(
+                    f"/api/jobs/{job.id}/media-retention",
+                    json={"policy": "delete_now", "confirm": True},
+                )
+                detail = client.get(f"/api/jobs/{job.id}").json()
+
+            self.assertEqual(rejected.status_code, 409)
+            self.assertTrue(image.is_file())
+            self.assertIsNone(detail["media_retention"])
+            self.assertIn(
+                "source_image_001",
+                {artifact["kind"] for artifact in detail["artifacts"]},
+            )
 
     def test_changes_requested_requires_a_note_and_allows_a_new_job(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

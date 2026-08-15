@@ -18,6 +18,7 @@ import { PageHeader } from "../components/PageHeader";
 import { formatCompactDate } from "../lib/format";
 import {
   cancelIngestionJob,
+  configureIngestionMediaRetention,
   createIngestionJob,
   ingestionArtifactUrl,
   loadIngestionHealth,
@@ -41,6 +42,8 @@ import {
 import {
   candidateSummarySaveLabel,
   ingestionRefreshDelay,
+  MEDIA_RETENTION_OPTIONS,
+  mediaRetentionStatusLabel,
 } from "../lib/ingestion-ui";
 
 const FILTERS = [
@@ -169,6 +172,8 @@ export function IngestionPage() {
   const [summaryCopyState, setSummaryCopyState] = useState("idle");
   const [savingSummary, setSavingSummary] = useState(false);
   const [confirmPublish, setConfirmPublish] = useState(false);
+  const [retentionPolicy, setRetentionPolicy] = useState("delete_now");
+  const [confirmRetention, setConfirmRetention] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const contentKind = ingestionContentKind(detail);
@@ -231,6 +236,11 @@ export function IngestionPage() {
     setSummaryDraft("");
     setSummaryCopyState("idle");
   }, [detail?.id]);
+
+  useEffect(() => {
+    setRetentionPolicy(detail?.media_retention?.policy || "delete_now");
+    setConfirmRetention(false);
+  }, [detail?.id, detail?.media_retention?.policy]);
 
   useEffect(() => {
     if (!transcriptArtifactId || !detail?.id) return undefined;
@@ -359,6 +369,11 @@ export function IngestionPage() {
       setBusy(false);
     }
   };
+
+  const saveMediaRetention = () => runAction(async () => {
+    await configureIngestionMediaRetention(detail.id, retentionPolicy);
+    setConfirmRetention(false);
+  });
 
   const progress = flowProgress(detail);
   const state = displayStatus(detail);
@@ -685,6 +700,62 @@ export function IngestionPage() {
                 <section className="ingestion-published">
                   <IconCircleCheck aria-hidden="true" />
                   <div><strong>已发布为来源资料</strong><span>{detail.publication.relative_path}</span></div>
+                </section>
+              ) : null}
+
+              {detail.publication && detail.media_retention ? (
+                <section className="ingestion-retention">
+                  <div className="ingestion-section-title">
+                    <span>MEDIA RETENTION</span>
+                    <h3>临时源视频保留策略</h3>
+                  </div>
+                  <div className={`ingestion-retention__status ingestion-retention__status--${detail.media_retention.state}`}>
+                    <strong>{mediaRetentionStatusLabel(detail.media_retention)}</strong>
+                    <span>
+                      {detail.media_retention.state === "cleaned"
+                        ? `已释放约 ${(detail.media_retention.source_size / 1024 / 1024).toFixed(1)} MB；转写、摘要、字幕、哈希和审核记录仍保留。`
+                        : detail.media_retention.delete_after
+                          ? `保留期限至 ${formatCompactDate(detail.media_retention.delete_after)}；到期后仍需手动确认清理。`
+                          : "这里只管理抖音源视频，不会删除图文图片或已经发布的 Markdown。"}
+                    </span>
+                  </div>
+                  {detail.media_retention.state !== "cleaned" ? (
+                    <>
+                      <fieldset className="ingestion-retention__options" disabled={busy}>
+                        <legend>选择策略</legend>
+                        {MEDIA_RETENTION_OPTIONS.map((option) => (
+                          <label className={retentionPolicy === option.value ? "is-selected" : ""} key={option.value}>
+                            <input
+                              checked={retentionPolicy === option.value}
+                              name="media-retention"
+                              onChange={() => {
+                                setRetentionPolicy(option.value);
+                                setConfirmRetention(false);
+                              }}
+                              type="radio"
+                              value={option.value}
+                            />
+                            <span><strong>{option.label}</strong><small>{option.description}</small></span>
+                          </label>
+                        ))}
+                      </fieldset>
+                      {!confirmRetention ? (
+                        <button className="ingestion-action" disabled={busy} onClick={() => setConfirmRetention(true)} type="button">
+                          {retentionPolicy === "delete_now" ? "清理临时视频" : "保存保留策略"}
+                        </button>
+                      ) : (
+                        <div className="ingestion-confirm ingestion-retention__confirm">
+                          <IconAlertTriangle aria-hidden="true" />
+                          <div>
+                            <strong>{retentionPolicy === "delete_now" ? "确认删除任务 Run 中的源视频？" : "确认保存这项保留策略？"}</strong>
+                            <span>{retentionPolicy === "delete_now" ? "视频删除后无法从本地恢复，图文图片和 Markdown 不受影响。" : "以后仍可在这里修改；30 天到期不会自动删除。"}</span>
+                          </div>
+                          <button disabled={busy} onClick={saveMediaRetention} type="button">确认</button>
+                          <button disabled={busy} onClick={() => setConfirmRetention(false)} type="button">取消</button>
+                        </div>
+                      )}
+                    </>
+                  ) : null}
                 </section>
               ) : null}
 

@@ -6543,6 +6543,7 @@ h3 {
 .ingestion-review,
 .ingestion-summary,
 .ingestion-publish,
+.ingestion-retention,
 .ingestion-transcript,
 .ingestion-images {
   margin-top: 18px;
@@ -6554,7 +6555,8 @@ h3 {
 
 .ingestion-review,
 .ingestion-summary,
-.ingestion-publish {
+.ingestion-publish,
+.ingestion-retention {
   border-color: var(--ingestion-signal-soft);
   box-shadow: 0 10px 26px rgba(15, 143, 120, 0.07);
 }
@@ -6784,6 +6786,90 @@ h3 {
   font: 10px var(--font-mono);
 }
 
+.ingestion-retention__status {
+  display: grid;
+  gap: 4px;
+  margin: 14px 0;
+  padding: 11px 12px;
+  border-left: 3px solid var(--ingestion-signal);
+  background: var(--ingestion-signal-wash);
+}
+
+.ingestion-retention__status strong {
+  color: var(--ingestion-signal-deep);
+  font-size: 11px;
+}
+
+.ingestion-retention__status span {
+  color: var(--ink-soft);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.ingestion-retention__status--due {
+  border-left-color: #d4a146;
+  background: #fff8e8;
+}
+
+.ingestion-retention__options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 0;
+  border: 0;
+}
+
+.ingestion-retention__options legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.ingestion-retention__options label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--paper);
+  cursor: pointer;
+}
+
+.ingestion-retention__options label.is-selected {
+  border-color: var(--ingestion-signal);
+  box-shadow: 0 0 0 2px var(--ingestion-signal-wash);
+}
+
+.ingestion-retention__options input {
+  margin-top: 2px;
+  accent-color: var(--ingestion-signal);
+}
+
+.ingestion-retention__options label > span {
+  display: grid;
+  gap: 5px;
+}
+
+.ingestion-retention__options strong {
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.ingestion-retention__options small {
+  color: var(--ink-faint);
+  font-size: 9.5px;
+  line-height: 1.55;
+}
+
+.ingestion-retention__confirm {
+  margin-top: 12px;
+}
+
 .ingestion-job-error {
   margin-top: 14px;
   padding: 11px 12px;
@@ -6957,6 +7043,10 @@ h3 {
   .ingestion-publish dl > div {
     grid-template-columns: 1fr;
     gap: 4px;
+  }
+
+  .ingestion-retention__options {
+    grid-template-columns: 1fr;
   }
 }
 

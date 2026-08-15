@@ -13,8 +13,9 @@ $state = Get-Content -Raw -LiteralPath $stateFile -Encoding UTF8 | ConvertFrom-J
 function Stop-RecordedProcess($Record) {
     $process = Get-Process -Id $Record.id -ErrorAction SilentlyContinue
     if (-not $process) { return }
-    $actualStart = $process.StartTime.ToUniversalTime().ToString("o")
-    if ($process.ProcessName -ne $Record.name -or $actualStart -ne $Record.startedAt) {
+    $actualStart = $process.StartTime.ToUniversalTime()
+    $recordedStart = ([DateTime]$Record.startedAt).ToUniversalTime()
+    if ($process.ProcessName -ne $Record.name -or $actualStart -ne $recordedStart) {
         throw "Process state is stale; no unrelated process was stopped."
     }
     Stop-Process -Id $process.Id -Force

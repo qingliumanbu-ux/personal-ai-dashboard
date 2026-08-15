@@ -78,6 +78,13 @@ export function publishIngestionJob(jobId) {
   });
 }
 
+export function configureIngestionMediaRetention(jobId, policy) {
+  return request(`/jobs/${encodeURIComponent(jobId)}/media-retention`, {
+    method: "POST",
+    body: JSON.stringify({ policy, confirm: true }),
+  });
+}
+
 export function cancelIngestionJob(jobId) {
   return request(`/jobs/${encodeURIComponent(jobId)}/cancel`, {
     method: "POST",

@@ -210,7 +210,7 @@
     <div class="paw-title-row">
       <div>
         <h1>个人 AI 知识库与工作台 · V2.3</h1>
-        <p class="paw-subtitle">Dashboard 已成为唯一主界面，本地视频、抖音视频和公开网页共用同一采集审核出口。AI 候选摘要与公开网页真实验收已完成，当前进入抖音图文采集。</p>
+        <p class="paw-subtitle">Dashboard 已成为唯一主界面，本地视频、抖音视频、抖音图文和公开网页共用同一采集审核出口。AI 候选摘要与抖音图文真实闭环已完成，临时视频支持人工选择保留策略，下一步接入 Markdown/TXT。</p>
       </div>
       <button type="button" class="btn btn-ghost" id="paw-reset" data-tooltip="清空本页保存的勾选进度">
         <i data-lucide="rotate-ccw" aria-hidden="true"></i> 重置进度
@@ -218,7 +218,7 @@
     </div>
 
     <div class="viz-grid paw-summary" aria-label="路线摘要">
-      <div class="card viz-stat"><span class="text-muted">当前基线</span><strong class="viz-stat-value">P1.3-D</strong><span class="text-small text-muted">实现抖音图文采集与审核</span></div>
+      <div class="card viz-stat"><span class="text-muted">当前基线</span><strong class="viz-stat-value">P1.4</strong><span class="text-small text-muted">接入 Markdown/TXT 文本资料</span></div>
       <div class="card viz-stat"><span class="text-muted">路线阶段</span><strong class="viz-stat-value">6</strong><span class="text-small text-muted">已完成项与当前项分开标记</span></div>
       <div class="card viz-stat"><span class="text-muted">具体步骤</span><strong class="viz-stat-value" id="paw-total-steps">0</strong><span class="text-small text-muted">用户与系统职责分开</span></div>
       <div class="card viz-stat"><span class="text-muted">完成进度</span><strong class="viz-stat-value" id="paw-progress-value">0%</strong><span class="text-small text-muted" id="paw-progress-label">0 / 0</span></div>
@@ -394,7 +394,7 @@ D:\Personal-AI\
     <section class="paw-section" data-panel="roadmap" hidden>
       <div>
         <h2>V2.3 分阶段实施路线</h2>
-        <p class="paw-kicker">P1.2、AI 候选摘要和公开网页真实闭环已完成；抖音视频已完成真实闭环。当前补齐抖音图文采集，再继续其他资料类型。</p>
+        <p class="paw-kicker">P1.2、AI 候选摘要、公开网页、抖音视频和抖音图文真实闭环已完成；临时视频保留策略已实现且不会静默删除。当前进入 P1.4，按最小风险顺序接入其他资料类型。</p>
       </div>
       <div class="paw-phases" id="paw-phase-buttons" aria-label="选择实施阶段"></div>
       <div id="paw-phase-detail" aria-live="polite"></div>
@@ -719,14 +719,14 @@ D:\Personal-AI\
             <thead><tr><th>节点</th><th>必须达到</th></tr></thead>
             <tbody>
               <tr><td>P1.2</td><td>真实 Vault 在仓库外；Dashboard 是唯一主界面；已审核转写经明确发布进入 04-来源资料；未经确认写入为 0。</td></tr>
-              <tr><td>P1.3</td><td>抖音视频与公开网页完成真实采集验收；新 Raw 同时保留候选摘要、完整正文与来源哈希；抖音图文保持待办；未经确认外发为 0。</td></tr>
+              <tr><td>P1.3</td><td>抖音视频、抖音图文与公开网页完成真实采集验收；新 Raw 同时保留候选摘要、完整正文与来源哈希；源视频可选择立即清理、保留 30 天或永久保留，图文图片不进入清理范围；未经确认外发为 0。</td></tr>
               <tr><td>P1.4 / P2</td><td>其他文档按真实样本逐类接入；Raw 到 Wiki 二次审核有效；原始资料丢失、越权发布和敏感误外发均为 0。</td></tr>
             </tbody>
           </table>
         </div>
       </div>
 
-      <p class="paw-source-note text-small">2026-08-15 修订依据：已验证的 Dashboard 统一界面、本地视频与抖音真实发布、公开网页与快速收藏实现，以及用户确认的厂商无关 AI 候选摘要边界。Markdown-first、完整原文和两次人工确认继续保持。</p>
+      <p class="paw-source-note text-small">2026-08-15 修订依据：已验证的 Dashboard 统一界面、本地视频、抖音视频、抖音图文与公开网页真实发布，快速收藏和厂商无关 AI 候选摘要边界，以及人工确认的临时视频保留策略。Markdown-first、完整原文和两次人工确认继续保持。</p>
     </section>
   </main>
 
@@ -863,7 +863,7 @@ D:\Personal-AI\
           ]
         },
         {
-          id: 'p13d', label: 'P1.3 · 抖音', title: '抖音视频与图文链接采集', period: '当前阶段：图文已完成采集验收，待人工摘要、审核与发布', objective: '粘贴一条抖音分享链接，自动识别视频或图文，生成可审核候选；视频使用本地转写，图文保留必要图片。',
+          id: 'p13d', label: 'P1.3 · 抖音', title: '抖音视频与图文链接采集', period: '已完成真实闭环；保留策略待用户按视频选择', objective: '粘贴一条抖音分享链接，自动识别视频或图文，生成可审核候选；视频使用本地转写，图文保留必要图片。',
           deliverables: ['抖音链接入口', '受限解析与下载适配器', '本地转写路由', '图文正文与图片审核', '临时媒体保留策略'],
           stop: '不抓取收藏列表，不读取私信，不绕过登录或验证码，不上传音频到第三方，不未经审核直接写 Vault。',
           steps: [
