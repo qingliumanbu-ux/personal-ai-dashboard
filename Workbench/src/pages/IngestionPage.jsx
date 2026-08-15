@@ -35,6 +35,10 @@ import {
   ingestionSourceLocation,
   ingestionSourceName,
 } from "../lib/ingestion-source";
+import {
+  candidateSummarySaveLabel,
+  ingestionRefreshDelay,
+} from "../lib/ingestion-ui";
 
 const FILTERS = [
   ["all", "全部"],
@@ -153,6 +157,7 @@ export function IngestionPage() {
   const [summaryPrompt, setSummaryPrompt] = useState("");
   const [summaryDraft, setSummaryDraft] = useState("");
   const [summaryCopyState, setSummaryCopyState] = useState("idle");
+  const [savingSummary, setSavingSummary] = useState(false);
   const [confirmPublish, setConfirmPublish] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -168,6 +173,7 @@ export function IngestionPage() {
   const isWebSource = sourceType === "web-page";
   const isDouyinSource = sourceType === "douyin";
   const isTextSource = isWebSource || isDouyinSource;
+  const refreshDelay = ingestionRefreshDelay(detail);
 
   const refresh = useCallback(async () => {
     try {
@@ -188,10 +194,18 @@ export function IngestionPage() {
   }, [selectedId]);
 
   useEffect(() => {
-    refresh();
-    const timer = window.setInterval(refresh, 1_500);
-    return () => window.clearInterval(timer);
-  }, [refresh]);
+    let cancelled = false;
+    let timer = null;
+    const poll = async () => {
+      await refresh();
+      if (!cancelled) timer = window.setTimeout(poll, refreshDelay);
+    };
+    void poll();
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [refresh, refreshDelay]);
 
   useEffect(() => {
     setReviewNote("");
@@ -306,10 +320,29 @@ export function IngestionPage() {
     }
   };
 
-  const saveSummary = () => runAction(async () => {
-    await saveCandidateSummary(detail.id, summaryDraft.trim());
-    setSummaryCopyState("saved");
-  });
+  const saveSummary = async () => {
+    setBusy(true);
+    setSavingSummary(true);
+    setError("");
+    try {
+      const saved = await saveCandidateSummary(detail.id, summaryDraft.trim());
+      setDetail((current) => current?.id === detail.id
+        ? {
+            ...current,
+            artifacts: [
+              saved,
+              ...(current.artifacts || []).filter((item) => item.kind !== "candidate_summary"),
+            ],
+          }
+        : current);
+      setSummaryCopyState("saved");
+    } catch (actionError) {
+      setError(actionError.message || "操作失败");
+    } finally {
+      setSavingSummary(false);
+      setBusy(false);
+    }
+  };
 
   const progress = flowProgress(detail);
   const state = displayStatus(detail);
@@ -560,15 +593,19 @@ export function IngestionPage() {
                     <span>粘贴或修改 AI 候选摘要</span>
                     <textarea
                       aria-label="AI 候选摘要"
-                      onChange={(event) => setSummaryDraft(event.target.value)}
+                      onChange={(event) => {
+                        setSummaryDraft(event.target.value);
+                        setSummaryCopyState((current) => current === "saved" ? "idle" : current);
+                      }}
                       placeholder={'必须依次包含：\n## AI 候选摘要\n## 核心要点\n## 建议标签\n## 可复用方向\n## 不确定内容'}
                       value={summaryDraft}
                     />
                   </label>
                   <div className="ingestion-summary__actions">
                     <button className="ingestion-action ingestion-action--approve" disabled={busy || !summaryDraft.trim()} onClick={saveSummary} type="button">
-                      <IconDeviceFloppy />{summaryArtifactId ? "保存修改" : "保存候选摘要"}
+                      <IconDeviceFloppy />{candidateSummarySaveLabel(savingSummary, Boolean(summaryArtifactId))}
                     </button>
+                    {summaryCopyState === "saved" ? <span className="ingestion-summary__saved" role="status"><IconCheck />已保存</span> : null}
                   </div>
                 </section>
               ) : null}
