@@ -10,14 +10,17 @@ from pathlib import Path
 import httpx
 
 from app.douyin import (
+    DouyinImagePost,
     DouyinPage,
     DouyinProvider,
     DouyinVideo,
+    DouyinExtractionError,
     InvalidDouyinSourceError,
-    UnsupportedDouyinPostError,
+    download_douyin_image,
     download_douyin_media,
     fetch_douyin_page,
-    resolve_douyin_video_in_browser,
+    parse_douyin_post,
+    resolve_douyin_post_in_browser,
 )
 from app.provider import ArtifactDraft, ProviderResult
 from app.queue import JobQueue
@@ -60,8 +63,8 @@ class DouyinProviderTests(unittest.TestCase):
                 script = base64.b64decode(command[-1]).decode("utf-8")
                 self.assertIn("document.querySelectorAll('video')", script)
                 self.assertIn("douyinvod.com", script)
-                self.assertNotIn("douyinstatic.com", script)
-                self.assertNotIn("byteimg.com", script)
+                self.assertIn("preferredImageHosts", script)
+                self.assertIn("douyinpic.com", script)
                 self.assertIn("readyState >= 1", script)
                 kwargs["stdout"].write(
                     json.dumps(
@@ -74,7 +77,7 @@ class DouyinProviderTests(unittest.TestCase):
                 )
             return subprocess.CompletedProcess(command, 0)
 
-        video = resolve_douyin_video_in_browser(
+        video = resolve_douyin_post_in_browser(
             "https://v.douyin.com/Rendered1/",
             runner=runner,
             executable=sys.executable,
@@ -90,7 +93,7 @@ class DouyinProviderTests(unittest.TestCase):
         self.assertEqual([command[3] for command in commands], ["open", "eval", "close"])
         self.assertEqual(commands[1][4], "-b")
 
-    def test_browser_fallback_reports_an_image_post_explicitly(self) -> None:
+    def test_browser_fallback_returns_an_image_post(self) -> None:
         def runner(command, **kwargs):
             if command[-2] == "-b":
                 kwargs["stdout"].write(
@@ -100,17 +103,24 @@ class DouyinProviderTests(unittest.TestCase):
                             "video_id": "7673485154678249971",
                             "title": "公开图文帖",
                             "post_kind": "image",
+                            "description": "图文正文",
+                            "image_urls": [
+                                "https://p3-sign.douyinpic.com/tos-cn-i/example-1"
+                            ],
                         }
                     ).encode("utf-8")
                 )
             return subprocess.CompletedProcess(command, 0)
 
-        with self.assertRaisesRegex(UnsupportedDouyinPostError, "图文帖"):
-            resolve_douyin_video_in_browser(
-                "https://v.douyin.com/ImagePost1/",
-                runner=runner,
-                executable=sys.executable,
-            )
+        post = resolve_douyin_post_in_browser(
+            "https://v.douyin.com/ImagePost1/",
+            runner=runner,
+            executable=sys.executable,
+        )
+
+        self.assertIsInstance(post, DouyinImagePost)
+        self.assertEqual(post.description, "图文正文")
+        self.assertEqual(len(post.image_urls), 1)
 
     def test_provider_falls_back_to_rendered_page_when_html_data_is_empty(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -168,7 +178,7 @@ class DouyinProviderTests(unittest.TestCase):
                 "浏览器渲染后的视频标题",
             )
 
-    def test_image_post_failure_is_explicit_and_never_downloads_media(self) -> None:
+    def test_image_post_downloads_images_and_enters_review_queue(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             queue = JobQueue(root / "ingestion.db", root / "runs", ())
@@ -181,7 +191,18 @@ class DouyinProviderTests(unittest.TestCase):
                                 {
                                     "aweme_id": "9988",
                                     "desc": "一篇图文",
-                                    "images": [{"url_list": ["https://example.com/image"]}],
+                                    "images": [
+                                        {
+                                            "url_list": [
+                                                "https://p3-sign.douyinpic.com/tos-cn-i/image-1"
+                                            ]
+                                        },
+                                        {
+                                            "url_list": [
+                                                "https://p3-sign.douyinpic.com/tos-cn-i/image-2"
+                                            ]
+                                        },
+                                    ],
                                 }
                             ]
                         }
@@ -197,24 +218,124 @@ class DouyinProviderTests(unittest.TestCase):
                 ),
                 captured_at="2026-08-15T00:00:00+00:00",
             )
-            download_called = False
+            downloaded_urls = []
 
-            def download(url, target, control) -> None:
-                nonlocal download_called
-                download_called = True
+            def download_image(url, target, control) -> Path:
+                downloaded_urls.append(url)
+                completed = target.with_suffix(".jpg")
+                completed.write_bytes(f"image-{len(downloaded_urls)}".encode())
+                return completed
 
             provider = DouyinProvider(
                 transcriber=FakeLocalTranscriber(),
                 fetcher=lambda _: page,
-                downloader=download,
+                image_downloader=download_image,
             )
 
             Worker(queue, provider, "worker-a").run_once()
 
-            failed = queue.get(job.id)
-            self.assertEqual(failed.status, "failed")
-            self.assertIn("图文帖", failed.error)
-            self.assertFalse(download_called)
+            completed = queue.get(job.id)
+            artifacts = {
+                artifact.kind: artifact for artifact in queue.list_artifacts(job.id)
+            }
+            self.assertEqual(completed.status, "waiting_review")
+            self.assertEqual(len(downloaded_urls), 2)
+            self.assertIn("content", artifacts)
+            self.assertIn("source_metadata", artifacts)
+            self.assertIn("source_image_001", artifacts)
+            self.assertIn("source_image_002", artifacts)
+            self.assertNotIn("transcript", artifacts)
+            content = artifacts["content"].path.read_text(encoding="utf-8")
+            self.assertIn("一篇图文", content)
+            self.assertNotIn("p3-sign.douyinpic.com", content)
+            metadata = json.loads(
+                artifacts["source_metadata"].path.read_text(encoding="utf-8")
+            )
+            self.assertEqual(metadata["source_type"], "douyin-image")
+            self.assertEqual(len(metadata["images"]), 2)
+
+    def test_image_download_rejects_non_image_content(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "001"
+
+            def handler(request: httpx.Request) -> httpx.Response:
+                return httpx.Response(
+                    200,
+                    headers={"content-type": "text/html"},
+                    content=b"not-an-image",
+                )
+
+            def resolver(host, port, type=0):
+                return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port))]
+
+            with self.assertRaisesRegex(DouyinExtractionError, "图片内容"):
+                download_douyin_image(
+                    "https://p3-sign.douyinpic.com/tos-cn-i/image-1",
+                    target,
+                    control=None,
+                    resolver=resolver,
+                    transport=httpx.MockTransport(handler),
+                )
+
+            self.assertEqual(list(target.parent.iterdir()), [])
+
+    def test_image_download_uses_validated_content_type_for_extension(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "001"
+
+            def handler(request: httpx.Request) -> httpx.Response:
+                self.assertEqual(request.headers["referer"], "https://www.douyin.com/")
+                return httpx.Response(
+                    200,
+                    headers={"content-type": "image/jpeg", "content-length": "5"},
+                    content=b"image",
+                )
+
+            def resolver(host, port, type=0):
+                return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port))]
+
+            completed = download_douyin_image(
+                "https://p3-sign.douyinpic.com/tos-cn-i/image-1",
+                target,
+                control=None,
+                resolver=resolver,
+                transport=httpx.MockTransport(handler),
+            )
+
+            self.assertEqual(completed.name, "001.jpg")
+            self.assertEqual(completed.read_bytes(), b"image")
+
+    def test_image_post_rejects_more_than_twelve_images(self) -> None:
+        router_data = {
+            "loaderData": {
+                "note_(id)/page": {
+                    "videoInfoRes": {
+                        "item_list": [
+                            {
+                                "aweme_id": "1234567890",
+                                "desc": "图片数量边界",
+                                "images": [
+                                    {
+                                        "url_list": [
+                                            f"https://p3-sign.douyinpic.com/tos-cn-i/image-{index}"
+                                        ]
+                                    }
+                                    for index in range(13)
+                                ],
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+        page = DouyinPage(
+            final_url="https://www.douyin.com/note/1234567890",
+            html=f"<script>window._ROUTER_DATA = {json.dumps(router_data)}</script>",
+            captured_at="2026-08-15T00:00:00+00:00",
+        )
+
+        with self.assertRaisesRegex(DouyinExtractionError, "超过 12 张"):
+            parse_douyin_post(page)
 
     def test_media_download_writes_only_the_requested_run_target(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

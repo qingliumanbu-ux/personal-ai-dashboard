@@ -100,3 +100,8 @@ export async function loadTranscriptText(jobId, artifactId) {
   if (!response.ok) throw new Error("无法读取候选正文");
   return response.text();
 }
+
+export function ingestionArtifactUrl(artifact) {
+  const path = artifact?.download_url || "";
+  return path.startsWith("/api/") ? `${API_ROOT}${path.slice(4)}` : "";
+}

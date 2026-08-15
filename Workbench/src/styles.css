@@ -6543,7 +6543,8 @@ h3 {
 .ingestion-review,
 .ingestion-summary,
 .ingestion-publish,
-.ingestion-transcript {
+.ingestion-transcript,
+.ingestion-images {
   margin-top: 18px;
   padding: 20px;
   border: 1px solid var(--line);
@@ -6817,6 +6818,35 @@ h3 {
   border-radius: var(--r-md);
   color: var(--ink-faint);
   font-size: 11px;
+}
+
+.ingestion-images__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-top: 15px;
+}
+
+.ingestion-images figure {
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: #f7f9f8;
+}
+
+.ingestion-images img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  object-fit: contain;
+  background: var(--paper);
+}
+
+.ingestion-images figcaption {
+  padding: 8px 10px;
+  color: var(--ink-faint);
+  font: 10px var(--font-mono);
 }
 
 @media (max-width: 1050px) {

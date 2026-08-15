@@ -44,6 +44,12 @@ _DOUYIN_MEDIA_HOST_SUFFIXES = (
     ".pstatp.com",
     ".byteimg.com",
 )
+_DOUYIN_IMAGE_HOST_SUFFIXES = (
+    ".douyinpic.com",
+    ".douyinstatic.com",
+    ".byteimg.com",
+    ".pstatp.com",
+)
 _ROUTER_DATA_PATTERN = re.compile(
     r"window\._ROUTER_DATA\s*=\s*(.*?)</script>",
     re.DOTALL,
@@ -52,6 +58,15 @@ _REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
 _MAX_REDIRECTS = 5
 _MAX_PAGE_BYTES = 5 * 1024 * 1024
 _MAX_MEDIA_BYTES = 512 * 1024 * 1024
+_MAX_IMAGE_COUNT = 12
+_MAX_IMAGE_BYTES = 20 * 1024 * 1024
+_MAX_IMAGE_TOTAL_BYTES = 80 * 1024 * 1024
+_IMAGE_CONTENT_TYPES = {
+    "image/avif": ".avif",
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+}
 
 
 class InvalidDouyinSourceError(ValueError):
@@ -59,10 +74,6 @@ class InvalidDouyinSourceError(ValueError):
 
 
 class DouyinExtractionError(RuntimeError):
-    pass
-
-
-class UnsupportedDouyinPostError(DouyinExtractionError):
     pass
 
 
@@ -82,6 +93,14 @@ class DouyinVideo:
     video_id: str
     title: str
     media_url: str
+
+
+@dataclass(frozen=True)
+class DouyinImagePost:
+    post_id: str
+    title: str
+    description: str
+    image_urls: tuple[str, ...]
 
 
 def extract_douyin_url(value: str) -> str:
@@ -117,6 +136,17 @@ def _validate_douyin_media_url(
         raise DouyinExtractionError(str(error)) from error
 
 
+def _validate_douyin_image_url(
+    value: str,
+    resolver: Callable = socket.getaddrinfo,
+) -> str:
+    normalized = _normalize_douyin_image_url(value)
+    try:
+        return validate_public_web_url(normalized, resolver=resolver)
+    except InvalidWebSourceError as error:
+        raise DouyinExtractionError(str(error)) from error
+
+
 def _normalize_douyin_media_url(value: str) -> str:
     try:
         normalized = extract_shared_url(value)
@@ -128,6 +158,20 @@ def _normalize_douyin_media_url(value: str) -> str:
         hostname.endswith(suffix) for suffix in _DOUYIN_MEDIA_HOST_SUFFIXES
     ):
         raise DouyinExtractionError("抖音页面返回了不受信任的媒体地址。")
+    return normalized
+
+
+def _normalize_douyin_image_url(value: str) -> str:
+    try:
+        normalized = extract_shared_url(value)
+    except InvalidWebSourceError as error:
+        raise DouyinExtractionError("抖音图片地址无效。") from error
+    parsed = urlsplit(normalized)
+    hostname = (parsed.hostname or "").lower()
+    if parsed.scheme != "https" or not any(
+        hostname.endswith(suffix) for suffix in _DOUYIN_IMAGE_HOST_SUFFIXES
+    ):
+        raise DouyinExtractionError("抖音页面返回了不受信任的图片地址。")
     return normalized
 
 
@@ -259,7 +303,78 @@ def download_douyin_media(
         temporary_path.unlink(missing_ok=True)
 
 
-def parse_douyin_video(page: DouyinPage) -> DouyinVideo:
+def download_douyin_image(
+    value: str,
+    target: Path,
+    control: ExecutionControl | None,
+    resolver: Callable = socket.getaddrinfo,
+    transport: httpx.BaseTransport | None = None,
+) -> Path:
+    current = _validate_douyin_image_url(value, resolver=resolver)
+    target = Path(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = target.with_suffix(".part")
+    temporary_path.unlink(missing_ok=True)
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36"
+        ),
+        "Referer": "https://www.douyin.com/",
+    }
+    try:
+        with httpx.Client(
+            headers=headers,
+            timeout=30,
+            follow_redirects=False,
+            transport=transport,
+        ) as client:
+            for _ in range(_MAX_REDIRECTS + 1):
+                current = _validate_douyin_image_url(current, resolver=resolver)
+                with client.stream("GET", current) as response:
+                    if response.status_code in _REDIRECT_STATUS_CODES:
+                        location = response.headers.get("location")
+                        if not location:
+                            raise DouyinExtractionError("抖音图片重定向缺少目标地址。")
+                        current = _validate_douyin_image_url(
+                            urljoin(current, location),
+                            resolver=resolver,
+                        )
+                        continue
+                    if response.status_code < 200 or response.status_code >= 300:
+                        raise DouyinExtractionError(
+                            f"抖音图片下载失败，状态码 {response.status_code}。"
+                        )
+                    content_type = response.headers.get("content-type", "").split(";", 1)[0]
+                    extension = _IMAGE_CONTENT_TYPES.get(content_type.lower())
+                    if extension is None:
+                        raise DouyinExtractionError("抖音图片地址没有返回支持的图片内容。")
+                    try:
+                        expected_size = int(response.headers.get("content-length", "0"))
+                    except ValueError:
+                        expected_size = 0
+                    if expected_size > _MAX_IMAGE_BYTES:
+                        raise DouyinExtractionError("单张抖音图片超过 20 MB 限制。")
+                    downloaded = 0
+                    with temporary_path.open("wb") as handle:
+                        for chunk in response.iter_bytes():
+                            if control is not None and control.is_cancel_requested():
+                                raise ProviderCancelled()
+                            downloaded += len(chunk)
+                            if downloaded > _MAX_IMAGE_BYTES:
+                                raise DouyinExtractionError("单张抖音图片超过 20 MB 限制。")
+                            handle.write(chunk)
+                    if downloaded <= 0:
+                        raise DouyinExtractionError("抖音图片下载失败，图片内容为空。")
+                    completed_path = target.with_suffix(extension)
+                    temporary_path.replace(completed_path)
+                    return completed_path
+        raise DouyinExtractionError("抖音图片重定向次数过多。")
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+
+def parse_douyin_post(page: DouyinPage) -> DouyinVideo | DouyinImagePost:
     extract_douyin_url(page.final_url)
     match = _ROUTER_DATA_PATTERN.search(page.html)
     if match is None:
@@ -286,24 +401,82 @@ def parse_douyin_video(page: DouyinPage) -> DouyinVideo:
     except (KeyError, IndexError, TypeError) as error:
         raise DouyinExtractionError("抖音帖子数据不完整，无法继续处理。") from error
 
-    video = item.get("video") if isinstance(item, dict) else None
+    if not isinstance(item, dict):
+        raise DouyinExtractionError("抖音帖子数据不完整，无法继续处理。")
+
+    image_urls = _image_urls_from_item(item)
+    if image_urls:
+        post_id = _douyin_post_id(item, page.final_url)
+        description = str(item.get("desc") or "").strip()
+        title = str(item.get("title") or description or f"抖音图文-{post_id}").strip()
+        return _create_image_post(post_id, title, description, image_urls)
+
+    video = item.get("video")
     play_address = video.get("play_addr") if isinstance(video, dict) else None
     urls = play_address.get("url_list") if isinstance(play_address, dict) else None
     if not urls:
-        if isinstance(item, dict) and item.get("images"):
-            raise UnsupportedDouyinPostError("该链接是抖音图文帖，当前 MVP 暂不支持图文提取。")
         raise DouyinExtractionError("抖音视频没有可用的公开媒体地址。")
 
-    video_id = str(item.get("aweme_id") or "").strip()
-    if not video_id:
-        final_path = urlsplit(page.final_url).path.rstrip("/")
-        video_id = final_path.rsplit("/", 1)[-1]
+    video_id = _douyin_post_id(item, page.final_url)
     title = str(item.get("desc") or f"抖音视频-{video_id}").strip()[:200]
     media_url = str(urls[0]).replace("playwm", "play")
     return DouyinVideo(
         video_id=video_id,
         title=title,
         media_url=_normalize_douyin_media_url(media_url),
+    )
+
+
+def _douyin_post_id(item: dict, final_url: str) -> str:
+    post_id = str(item.get("aweme_id") or item.get("item_id") or "").strip()
+    if post_id:
+        return post_id
+    final_path = urlsplit(final_url).path.rstrip("/")
+    return final_path.rsplit("/", 1)[-1]
+
+
+def _image_urls_from_item(item: dict) -> list[str]:
+    image_urls = []
+    for image in item.get("images") or ():
+        if not isinstance(image, dict):
+            continue
+        candidates = image.get("url_list") or image.get("download_url_list") or ()
+        if not isinstance(candidates, list):
+            continue
+        selected = next(
+            (str(value) for value in candidates if str(value).startswith("https://")),
+            "",
+        )
+        if selected and selected not in image_urls:
+            image_urls.append(selected)
+    return image_urls
+
+
+def _create_image_post(
+    post_id: str,
+    title: str,
+    description: str,
+    image_urls,
+) -> DouyinImagePost:
+    normalized_urls = []
+    for value in image_urls:
+        normalized = _normalize_douyin_image_url(str(value))
+        if normalized not in normalized_urls:
+            normalized_urls.append(normalized)
+    if not normalized_urls:
+        raise DouyinExtractionError("抖音图文帖没有可用的公开图片。")
+    if len(normalized_urls) > _MAX_IMAGE_COUNT:
+        raise DouyinExtractionError(f"抖音图文帖图片超过 {_MAX_IMAGE_COUNT} 张限制。")
+    normalized_id = str(post_id).strip()
+    if not normalized_id:
+        raise DouyinExtractionError("抖音图文帖缺少内容 ID。")
+    normalized_title = re.sub(r"\s+", " ", str(title)).strip()[:200]
+    normalized_description = str(description).strip()
+    return DouyinImagePost(
+        post_id=normalized_id,
+        title=normalized_title or f"抖音图文-{normalized_id}",
+        description=normalized_description,
+        image_urls=tuple(normalized_urls),
     )
 
 
@@ -321,7 +494,7 @@ class _TranscriptionControl:
         return self.control.is_cancel_requested()
 
 
-_BROWSER_VIDEO_SCRIPT = """(async () => {
+_BROWSER_POST_SCRIPT = """(async () => {
   const preferredHosts = [
     '.douyinvod.com',
     '.bytevcloud.com',
@@ -335,8 +508,27 @@ _BROWSER_VIDEO_SCRIPT = """(async () => {
       return false;
     }
   };
+  const preferredImageHosts = [
+    '.douyinpic.com',
+    '.douyinstatic.com',
+    '.byteimg.com',
+    '.pstatp.com',
+  ];
+  const isPreferredImage = (value) => {
+    try {
+      const hostname = new URL(value, location.href).hostname.toLowerCase();
+      return preferredImageHosts.some((suffix) => hostname.endsWith(suffix));
+    } catch {
+      return false;
+    }
+  };
   const parts = location.pathname.split('/').filter(Boolean);
-  const postKind = parts[0] === 'note' ? 'image' : 'video';
+  const loaderData = window._ROUTER_DATA?.loaderData || {};
+  const pagePayload = Object.entries(loaderData).find(([key]) => (
+    key === 'video_(id)/page' || key === 'note_(id)/page'
+  ))?.[1] || {};
+  const item = pagePayload.videoInfoRes?.item_list?.[0] || {};
+  const postKind = parts[0] === 'note' || Array.isArray(item.images) ? 'image' : 'video';
   const deadline = Date.now() + 30000;
   let source = '';
   while (postKind === 'video' && !source && Date.now() < deadline) {
@@ -354,23 +546,39 @@ _BROWSER_VIDEO_SCRIPT = """(async () => {
     }
   }
   const title = document.querySelector('meta[property="og:title"]')?.content
+    || item.title
+    || item.desc
     || document.querySelector('h1')?.textContent
     || document.title
     || '';
+  const description = item.desc
+    || document.querySelector('meta[property="og:description"]')?.content
+    || document.querySelector('meta[name="description"]')?.content
+    || '';
+  const itemImages = Array.isArray(item.images) ? item.images.flatMap((image) => (
+    image?.url_list || image?.download_url_list || []
+  )) : [];
+  const domImages = Array.from(document.querySelectorAll('img'))
+    .filter((image) => image.naturalWidth >= 300 && image.naturalHeight >= 300)
+    .map((image) => image.currentSrc || image.src);
+  const imageUrls = Array.from(new Set([...itemImages, ...domImages]))
+    .filter((value) => typeof value === 'string' && isPreferredImage(value));
   return {
     media_url: source,
     video_id: parts.at(-1) || '',
     title,
     post_kind: postKind,
+    description,
+    image_urls: imageUrls,
   };
 })()"""
 
 
-def resolve_douyin_video_in_browser(
+def resolve_douyin_post_in_browser(
     value: str,
     runner: Callable = subprocess.run,
     executable: str | None = None,
-) -> DouyinVideo:
+) -> DouyinVideo | DouyinImagePost:
     source_url = extract_douyin_url(value)
     command = _resolve_agent_browser_executable(executable or "agent-browser")
     if command is None:
@@ -418,7 +626,7 @@ def resolve_douyin_video_in_browser(
             [
                 "eval",
                 "-b",
-                base64.b64encode(_BROWSER_VIDEO_SCRIPT.encode("utf-8")).decode("ascii"),
+                base64.b64encode(_BROWSER_POST_SCRIPT.encode("utf-8")).decode("ascii"),
             ],
             35,
             capture_stdout=True,
@@ -439,20 +647,25 @@ def resolve_douyin_video_in_browser(
     try:
         payload = json.loads(raw_result.strip())
         media_url = str(payload["media_url"])
-        video_id = str(payload["video_id"]).strip()
+        post_id = str(payload.get("post_id") or payload["video_id"]).strip()
         title = str(payload.get("title") or "").strip()[:200]
         post_kind = str(payload.get("post_kind") or "").strip()
     except (KeyError, TypeError, ValueError) as error:
         raise DouyinExtractionError("隔离浏览器返回的抖音视频数据无效。") from error
     if post_kind == "image":
-        raise UnsupportedDouyinPostError("该链接是抖音图文帖，当前 MVP 暂不支持图文提取。")
+        return _create_image_post(
+            post_id,
+            title,
+            str(payload.get("description") or ""),
+            payload.get("image_urls") or (),
+        )
     if not media_url:
         raise DouyinExtractionError("公开抖音页面未提供可下载的视频媒体地址。")
-    if not re.fullmatch(r"\d{5,}", video_id):
+    if not re.fullmatch(r"\d{5,}", post_id):
         raise DouyinExtractionError("隔离浏览器未能识别抖音视频 ID。")
     return DouyinVideo(
-        video_id=video_id,
-        title=title or f"抖音视频-{video_id}",
+        video_id=post_id,
+        title=title or f"抖音视频-{post_id}",
         media_url=_normalize_douyin_media_url(media_url),
     )
 
@@ -478,11 +691,17 @@ class DouyinProvider:
         transcriber: TranscriptionProvider,
         fetcher: Callable[[str], DouyinPage] = fetch_douyin_page,
         downloader: Callable[[str, Path, ExecutionControl], None] = download_douyin_media,
-        browser_resolver: Callable[[str], DouyinVideo] = resolve_douyin_video_in_browser,
+        image_downloader: Callable[
+            [str, Path, ExecutionControl], Path
+        ] = download_douyin_image,
+        browser_resolver: Callable[
+            [str], DouyinVideo | DouyinImagePost
+        ] = resolve_douyin_post_in_browser,
     ) -> None:
         self.transcriber = transcriber
         self.fetcher = fetcher
         self.downloader = downloader
+        self.image_downloader = image_downloader
         self.browser_resolver = browser_resolver
 
     def run(self, job: Job, control: ExecutionControl) -> ProviderResult:
@@ -494,17 +713,20 @@ class DouyinProvider:
         control.heartbeat(0.05, "Resolving Douyin post")
         page = self.fetcher(job.source_url)
         try:
-            video = parse_douyin_video(page)
+            post = parse_douyin_post(page)
         except DouyinPageDataUnavailableError:
             control.heartbeat(0.1, "Rendering public Douyin page")
-            video = self.browser_resolver(job.source_url)
+            post = self.browser_resolver(job.source_url)
         if control.is_cancel_requested():
             raise ProviderCancelled()
+
+        if isinstance(post, DouyinImagePost):
+            return self._run_image_post(job, page, post, control)
 
         job.output_dir.mkdir(parents=True, exist_ok=True)
         media_path = job.output_dir / "source.mp4"
         control.heartbeat(0.2, "Downloading Douyin video")
-        self.downloader(video.media_url, media_path, control)
+        self.downloader(post.media_url, media_path, control)
         if not media_path.is_file() or media_path.stat().st_size <= 0:
             raise DouyinExtractionError("抖音视频下载失败，临时媒体文件为空。")
 
@@ -515,8 +737,8 @@ class DouyinProvider:
                     "source_type": "douyin-video",
                     "requested_url": job.source_url,
                     "final_url": page.final_url,
-                    "video_id": video.video_id,
-                    "title": video.title,
+                    "video_id": post.video_id,
+                    "title": post.title,
                     "captured_at": page.captured_at,
                     "media_sha256": _sha256_file(media_path),
                 },
@@ -535,6 +757,85 @@ class DouyinProvider:
                 ArtifactDraft("source_metadata", source_metadata_path),
             ),
             log_path=result.log_path,
+        )
+
+    def _run_image_post(
+        self,
+        job: Job,
+        page: DouyinPage,
+        post: DouyinImagePost,
+        control: ExecutionControl,
+    ) -> ProviderResult:
+        job.output_dir.mkdir(parents=True, exist_ok=True)
+        images_dir = job.output_dir / "images"
+        images_dir.mkdir(exist_ok=True)
+        image_drafts = []
+        image_records = []
+        total_size = 0
+        image_count = len(post.image_urls)
+        for index, image_url in enumerate(post.image_urls, start=1):
+            if control.is_cancel_requested():
+                raise ProviderCancelled()
+            control.heartbeat(
+                0.15 + (index - 1) / image_count * 0.55,
+                f"Downloading Douyin images {index}/{image_count}",
+            )
+            image_path = self.image_downloader(
+                image_url,
+                images_dir / f"{index:03d}",
+                control,
+            )
+            if not image_path.is_file() or image_path.stat().st_size <= 0:
+                raise DouyinExtractionError("抖音图片下载失败，图片文件为空。")
+            total_size += image_path.stat().st_size
+            if total_size > _MAX_IMAGE_TOTAL_BYTES:
+                image_path.unlink(missing_ok=True)
+                raise DouyinExtractionError("抖音图文图片合计超过 80 MB 限制。")
+            digest = _sha256_file(image_path)
+            image_drafts.append(ArtifactDraft(f"source_image_{index:03d}", image_path))
+            image_records.append(
+                {
+                    "url": image_url,
+                    "filename": image_path.name,
+                    "size": image_path.stat().st_size,
+                    "sha256": digest,
+                }
+            )
+
+        control.heartbeat(0.75, "Preparing Douyin image post")
+        content_path = job.output_dir / "content.md"
+        source_metadata_path = job.output_dir / "source.json"
+        description = post.description.strip()
+        body = description if description != post.title else ""
+        content_path.write_text(
+            "\n".join((f"# {post.title}", "", body)).rstrip() + "\n",
+            encoding="utf-8",
+        )
+        source_metadata_path.write_text(
+            json.dumps(
+                {
+                    "source_type": "douyin-image",
+                    "requested_url": job.source_url,
+                    "final_url": page.final_url,
+                    "post_id": post.post_id,
+                    "title": post.title,
+                    "description": post.description,
+                    "captured_at": page.captured_at,
+                    "images": image_records,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        control.heartbeat(0.98, "Validating Douyin image artifacts")
+        return ProviderResult(
+            artifacts=(
+                ArtifactDraft("content", content_path),
+                ArtifactDraft("source_metadata", source_metadata_path),
+                *image_drafts,
+            ),
+            log_path=None,
         )
 
 

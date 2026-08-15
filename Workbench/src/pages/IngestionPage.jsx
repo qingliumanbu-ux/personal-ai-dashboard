@@ -19,6 +19,7 @@ import { formatCompactDate } from "../lib/format";
 import {
   cancelIngestionJob,
   createIngestionJob,
+  ingestionArtifactUrl,
   loadIngestionHealth,
   loadIngestionJob,
   loadIngestionJobs,
@@ -32,6 +33,8 @@ import {
 import {
   buildIngestionPayload,
   ingestionCaptureContext,
+  ingestionContentKind,
+  ingestionReadableContent,
   ingestionSourceLocation,
   ingestionSourceName,
 } from "../lib/ingestion-source";
@@ -60,13 +63,13 @@ const STATUS = {
 
 function displayStatus(job) {
   if (job?.publication) return { label: "已发布", tone: "published" };
-  if (job?.source_type === "web-page" && job?.status === "running") {
+  if (["web-page", "douyin"].includes(job?.source_type) && job?.status === "running") {
     return { label: "采集中", tone: "live" };
   }
   return STATUS[job?.status] || { label: job?.status || "未知", tone: "neutral" };
 }
 
-function stepLabel(value = "", sourceType = "local-video") {
+function stepLabel(value = "", sourceType = "local-video", isDocument = false) {
   const labels = {
     "Waiting in queue": "排队等待",
     "Starting transcription": "正在启动转写",
@@ -85,6 +88,8 @@ function stepLabel(value = "", sourceType = "local-video") {
     "Resolving Douyin post": "正在解析抖音帖子",
     "Downloading Douyin video": "正在下载抖音临时视频",
     "Starting local transcription": "正在启动本地转写",
+    "Preparing Douyin image post": "正在整理抖音图文",
+    "Validating Douyin image artifacts": "正在校验抖音图文产物",
     "Ingestion failed": "采集失败",
     "Cancellation requested": "正在取消",
     Cancelled: "已取消",
@@ -95,8 +100,13 @@ function stepLabel(value = "", sourceType = "local-video") {
   if (value.startsWith("Downloading Douyin video ")) {
     return `正在下载抖音临时视频 ${value.slice("Downloading Douyin video ".length)}`;
   }
-  if (value === "Ready for review" && sourceType === "web-page") {
-    return "网页正文已提取，等待审核";
+  if (value.startsWith("Downloading Douyin images ")) {
+    return `正在下载抖音图片 ${value.slice("Downloading Douyin images ".length)}`;
+  }
+  if (value === "Ready for review" && (sourceType === "web-page" || isDocument)) {
+    return sourceType === "web-page"
+      ? "网页正文已提取，等待审核"
+      : "抖音图文已提取，等待审核";
   }
   return labels[value] || value;
 }
@@ -161,9 +171,15 @@ export function IngestionPage() {
   const [confirmPublish, setConfirmPublish] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const contentKind = ingestionContentKind(detail);
+  const isDocumentDetail = contentKind === "document";
   const transcriptArtifactId = detail?.artifacts?.find(
-    (item) => ["transcript", "content"].includes(item.kind),
+    (item) => item.kind === (isDocumentDetail ? "content" : "transcript"),
   )?.id;
+  const imageArtifacts = detail?.artifacts?.filter(
+    (item) => item.kind.startsWith("source_image_"),
+  ) || [];
+  const readableTranscript = ingestionReadableContent(transcript, detail);
   const summaryArtifactId = detail?.artifacts?.find(
     (item) => item.kind === "candidate_summary",
   )?.id;
@@ -545,7 +561,7 @@ export function IngestionPage() {
                 <div className="ingestion-flow__track"><span /></div>
                 {[
                   ["submit", "投递"],
-                  ["transcribe", detail.source_type === "web-page" ? "抓取" : "转写"],
+                  ["transcribe", isDocumentDetail ? "抓取" : "转写"],
                   ["summary", "AI 摘要"],
                   ["review", "审核"],
                   ["publish", "发布"],
@@ -556,7 +572,7 @@ export function IngestionPage() {
                   </div>
                 ))}
                 <div className="ingestion-flow__readout">
-                  <span>{stepLabel(detail.current_step, detail.source_type)}</span>
+                  <span>{stepLabel(detail.current_step, detail.source_type, isDocumentDetail)}</span>
                   <strong>{progressReadout(detail)}</strong>
                 </div>
               </div>
@@ -614,7 +630,7 @@ export function IngestionPage() {
                 <section className="ingestion-review">
                   <div className="ingestion-section-title">
                     <span>REVIEW GATE</span>
-                    <h3>请判断这份{detail.source_type === "web-page" ? "网页正文" : "转写"}是否可作为来源资料</h3>
+                    <h3>请判断这份{isDocumentDetail ? (detail.source_type === "web-page" ? "网页正文" : "抖音图文") : "转写"}是否可作为来源资料</h3>
                   </div>
                   <textarea
                     onChange={(event) => setReviewNote(event.target.value)}
@@ -644,7 +660,7 @@ export function IngestionPage() {
                   </div>
                   <dl>
                     <div><dt>目标位置</dt><dd>{detail.publication_preview?.relative_path || (detail.source_type === "web-page" ? "04-来源资料/网页" : "04-来源资料/视频")}</dd></div>
-                    <div><dt>写入内容</dt><dd>{summaryArtifactId ? "候选摘要＋完整正文 Markdown" : detail.source_type === "web-page" ? "正文 Markdown，不写入原始 HTML" : "仅 Markdown，不复制原视频"}</dd></div>
+                    <div><dt>写入内容</dt><dd>{summaryArtifactId ? "候选摘要＋完整正文 Markdown" : isDocumentDetail ? "正文 Markdown，图片副本留在任务 Run" : "仅 Markdown，不复制原视频"}</dd></div>
                     <div><dt>知识状态</dt><dd>来源资料，不是正式知识</dd></div>
                   </dl>
                   {!confirmPublish ? (
@@ -699,18 +715,39 @@ export function IngestionPage() {
 
               <section className="ingestion-transcript">
                 <div className="ingestion-section-title">
-                  <span>{detail.source_type === "web-page" ? "WEB CONTENT" : "TRANSCRIPT"}</span>
-                  <h3>{detail.source_type === "web-page" ? "网页正文" : "转写正文"}</h3>
+                  <span>{isDocumentDetail ? "SOURCE CONTENT" : "TRANSCRIPT"}</span>
+                  <h3>{isDocumentDetail ? (detail.source_type === "web-page" ? "网页正文" : "抖音图文正文") : "转写正文"}</h3>
                 </div>
-                {transcript ? <pre>{transcript}</pre> : (
+                {readableTranscript ? <pre>{readableTranscript}</pre> : (
                   <div className="ingestion-transcript__empty">
-                    {detail.source_type === "web-page" ? <IconWorld aria-hidden="true" /> : <IconPlayerPlay aria-hidden="true" />}
+                    {isDocumentDetail ? <IconWorld aria-hidden="true" /> : <IconPlayerPlay aria-hidden="true" />}
                     <span>{detail.status === "running"
-                      ? detail.source_type === "web-page" ? "网页采集中，完成后在这里审核正文。" : "转写进行中，完成后在这里审核全文。"
-                      : detail.source_type === "web-page" ? "当前还没有可阅读的网页正文。" : "当前还没有可阅读的转写文本。"}</span>
+                      ? isDocumentDetail ? "正文采集中，完成后在这里审核。" : "转写进行中，完成后在这里审核全文。"
+                      : isDocumentDetail ? "当前还没有可阅读的正文。" : "当前还没有可阅读的转写文本。"}</span>
                   </div>
                 )}
               </section>
+
+              {imageArtifacts.length ? (
+                <section className="ingestion-images">
+                  <div className="ingestion-section-title">
+                    <span>SOURCE IMAGES</span>
+                    <h3>图文图片 · {imageArtifacts.length} 张</h3>
+                  </div>
+                  <div className="ingestion-images__grid">
+                    {imageArtifacts.map((artifact, index) => (
+                      <figure key={artifact.id}>
+                        <img
+                          alt={`抖音图文图片 ${index + 1}`}
+                          loading="lazy"
+                          src={ingestionArtifactUrl(artifact)}
+                        />
+                        <figcaption>图 {index + 1}</figcaption>
+                      </figure>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
             </>
           ) : (
             <div className="ingestion-detail__empty">

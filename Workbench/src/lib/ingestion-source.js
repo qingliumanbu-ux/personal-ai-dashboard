@@ -69,7 +69,7 @@ export function ingestionCaptureContext(job) {
 }
 
 export function ingestionSourceName(job) {
-  if (job?.source_type === "douyin") return "抖音视频";
+  if (job?.source_type === "douyin") return "抖音内容";
   if (job?.source_type === "web-page") {
     try {
       return new URL(job.source_url).hostname;
@@ -78,6 +78,19 @@ export function ingestionSourceName(job) {
     }
   }
   return (job?.source_path || "").split(/[\\/]/).pop() || "未命名视频";
+}
+
+export function ingestionContentKind(job) {
+  if (job?.source_type === "web-page") return "document";
+  const hasDocument = job?.artifacts?.some((item) => item.kind === "content")
+    || job?.current_step?.includes("Douyin image");
+  return hasDocument ? "document" : "transcript";
+}
+
+export function ingestionReadableContent(value = "", job) {
+  const hasImages = job?.artifacts?.some((item) => item.kind.startsWith("source_image_"));
+  if (job?.source_type !== "douyin" || !hasImages) return value;
+  return value.split(/\n## 图片\s*\n/, 1)[0].trim();
 }
 
 export function ingestionSourceLocation(job) {

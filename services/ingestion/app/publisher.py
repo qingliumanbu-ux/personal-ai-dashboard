@@ -255,20 +255,31 @@ class Publisher:
         )
 
     def _build_douyin_publication(self, job, review, artifacts):
-        transcript = artifacts.get("transcript")
-        source_media = artifacts.get("source_media")
         source_metadata = artifacts.get("source_metadata")
-        if transcript is None or source_media is None or source_metadata is None:
-            raise PublicationStateError("Approved Douyin job is missing source artifacts")
+        if source_metadata is None:
+            raise PublicationStateError("Approved Douyin job is missing source metadata")
         if not job.source_url:
             raise PublicationStateError("Douyin job has no source URL")
-        transcript_text = transcript.path.read_text(encoding="utf-8").strip()
-        if not transcript_text:
-            raise PublicationStateError("Transcript artifact is empty")
         try:
             metadata_payload = json.loads(source_metadata.path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as error:
             raise PublicationStateError("Douyin source metadata artifact is invalid") from error
+        if metadata_payload.get("source_type") == "douyin-image":
+            return self._build_douyin_image_publication(
+                job,
+                review,
+                artifacts,
+                source_metadata,
+                metadata_payload,
+            )
+
+        transcript = artifacts.get("transcript")
+        source_media = artifacts.get("source_media")
+        if transcript is None or source_media is None:
+            raise PublicationStateError("Approved Douyin video is missing source artifacts")
+        transcript_text = transcript.path.read_text(encoding="utf-8").strip()
+        if not transcript_text:
+            raise PublicationStateError("Transcript artifact is empty")
 
         video_id = str(metadata_payload.get("video_id") or "").strip()
         title = str(metadata_payload.get("title") or "未命名抖音视频").strip()[:200]
@@ -318,6 +329,119 @@ class Publisher:
                 "",
                 transcript_text,
                 "",
+            )
+        )
+        payload = markdown.encode("utf-8")
+        content_sha256 = hashlib.sha256(payload).hexdigest()
+        return (
+            PublicationPreview(publication_id, job.id, relative_path),
+            payload,
+            source_sha256,
+            content_sha256,
+        )
+
+    def _build_douyin_image_publication(
+        self,
+        job,
+        review,
+        artifacts,
+        source_metadata,
+        metadata_payload,
+    ):
+        content = artifacts.get("content")
+        image_artifacts = sorted(
+            (
+                artifact
+                for kind, artifact in artifacts.items()
+                if kind.startswith("source_image_")
+            ),
+            key=lambda artifact: artifact.kind,
+        )
+        if content is None or not image_artifacts:
+            raise PublicationStateError("Approved Douyin image post is missing source artifacts")
+        content_text = content.path.read_text(encoding="utf-8").strip()
+        if not content_text:
+            raise PublicationStateError("Douyin image post content artifact is empty")
+
+        post_id = str(metadata_payload.get("post_id") or "").strip()
+        title = str(metadata_payload.get("title") or "未命名抖音图文").strip()[:200]
+        final_url = str(metadata_payload.get("final_url") or job.source_url)
+        captured_at = str(metadata_payload.get("captured_at") or "")
+        metadata_images = metadata_payload.get("images")
+        if not isinstance(metadata_images, list) or len(metadata_images) != len(image_artifacts):
+            raise PublicationStateError("Douyin image metadata does not match source artifacts")
+        image_urls = [
+            str(image.get("url") or "").strip()
+            for image in metadata_images
+            if isinstance(image, dict)
+        ]
+        if len(image_urls) != len(image_artifacts) or any(
+            not value.startswith("https://") for value in image_urls
+        ):
+            raise PublicationStateError("Douyin image metadata contains invalid source URLs")
+        image_hashes = [artifact.sha256 for artifact in image_artifacts]
+        source_sha256 = source_metadata.sha256
+        identity = "\0".join(
+            (
+                "raw-douyin-image-v1",
+                job.id,
+                job.source_url,
+                source_sha256,
+                content.sha256,
+                *image_hashes,
+            )
+        ).encode("utf-8")
+        publication_id = hashlib.sha256(identity).hexdigest()[:24]
+        filename = f"{_safe_filename(title)}-{publication_id[:8]}.md"
+        relative_path = (RAW_VIDEO_DIRECTORY / filename).as_posix()
+        capture_frontmatter, capture_body = _capture_markdown(job.params)
+        summary_frontmatter, summary_body = _summary_markdown(job, artifacts, content)
+        body = _without_leading_title(content_text, title).partition("\n## 图片")[0].strip()
+        image_body = tuple(
+            line
+            for index, image_url in enumerate(image_urls, start=1)
+            for line in (f"![图 {index}](<{image_url}>)", "")
+        )
+        markdown = "\n".join(
+            (
+                "---",
+                "type: raw-source",
+                "source_type: douyin-image",
+                "status: reviewed",
+                "review_decision: approved",
+                f"publication_id: {json.dumps(publication_id)}",
+                f"source_url: {json.dumps(job.source_url, ensure_ascii=False)}",
+                f"final_url: {json.dumps(final_url, ensure_ascii=False)}",
+                f"post_id: {json.dumps(post_id, ensure_ascii=False)}",
+                f"source_sha256: {json.dumps(source_sha256)}",
+                f"content_sha256: {json.dumps(content.sha256)}",
+                f"source_images_sha256: {json.dumps(image_hashes)}",
+                f"captured_at: {json.dumps(captured_at)}",
+                f"published_at: {json.dumps(review.created_at)}",
+                *capture_frontmatter,
+                *summary_frontmatter,
+                "---",
+                "",
+                f"# {title}",
+                "",
+                "## 来源",
+                "",
+                "- 类型：公开抖音图文",
+                f"- 原链接：{job.source_url}",
+                f"- 内容 ID：`{post_id}`",
+                f"- 采集时间：{captured_at}",
+                f"- 图片数量：{len(image_artifacts)}",
+                "- 图片保留：审核副本位于任务 Run 目录，知识库 Markdown 引用公开原图",
+                "",
+                *capture_body,
+                *summary_body,
+                "## 图文正文",
+                "",
+                body,
+                "",
+                "## 图片",
+                "",
+                *image_body,
             )
         )
         payload = markdown.encode("utf-8")

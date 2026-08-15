@@ -113,6 +113,76 @@ class PublisherTests(unittest.TestCase):
             self.assertIn("抖音视频的本地转写正文。", markdown)
             self.assertEqual(list(vault.rglob("*.mp4")), [])
 
+    def test_approved_douyin_image_post_publishes_markdown_without_image_files(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            queue = JobQueue(root / "runtime" / "ingestion.db", root / "runs", ())
+            job = queue.submit_douyin(
+                "https://v.douyin.com/ImagePost1/",
+                {"summary_required": "true"},
+            )
+
+            class FakeDouyinImageProvider:
+                def run(self, queued_job, control) -> ProviderResult:
+                    queued_job.output_dir.mkdir(parents=True)
+                    image_url = "https://p3-sign.douyinpic.com/tos-cn-i/image-1"
+                    files = (
+                        (
+                            "content",
+                            "content.md",
+                            f"# 公开图文帖\n\n图文正文。\n\n## 图片\n\n![图 1](<{image_url}>)\n",
+                        ),
+                        (
+                            "source_metadata",
+                            "source.json",
+                            json.dumps(
+                                {
+                                    "source_type": "douyin-image",
+                                    "post_id": "7673485154678249971",
+                                    "title": "公开图文帖",
+                                    "final_url": "https://www.douyin.com/note/7673485154678249971",
+                                    "captured_at": "2026-08-15T00:00:00+00:00",
+                                    "images": [
+                                        {
+                                            "url": image_url,
+                                            "filename": "001.jpg",
+                                            "sha256": "synthetic-image-sha256",
+                                        }
+                                    ],
+                                },
+                                ensure_ascii=False,
+                            ),
+                        ),
+                        ("source_image_001", "001.jpg", b"synthetic-image"),
+                    )
+                    drafts = []
+                    for kind, name, content in files:
+                        path = queued_job.output_dir / name
+                        if isinstance(content, bytes):
+                            path.write_bytes(content)
+                        else:
+                            path.write_text(content, encoding="utf-8")
+                        drafts.append(ArtifactDraft(kind, path))
+                    return ProviderResult(tuple(drafts), None)
+
+            Worker(queue, FakeDouyinImageProvider(), "worker-a").run_once()
+            queue.save_candidate_summary(job.id, VALID_SUMMARY)
+            queue.review(job.id, "approved", "内容通过")
+            vault = root / "vault"
+            vault.mkdir()
+
+            publication = Publisher(queue, vault).publish(job.id)
+
+            target = vault / Path(publication.relative_path)
+            markdown = target.read_text(encoding="utf-8")
+            self.assertTrue(publication.relative_path.startswith("04-来源资料/视频/"))
+            self.assertIn("source_type: douyin-image", markdown)
+            self.assertIn("## 图文正文", markdown)
+            self.assertIn("图文正文。", markdown)
+            self.assertIn("p3-sign.douyinpic.com", markdown)
+            self.assertEqual(markdown.count("p3-sign.douyinpic.com"), 1)
+            self.assertEqual(list(vault.rglob("*.jpg")), [])
+
     def test_approved_webpage_publishes_to_raw_web_layer(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

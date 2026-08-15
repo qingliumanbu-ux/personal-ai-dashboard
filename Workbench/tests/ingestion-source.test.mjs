@@ -4,6 +4,8 @@ import test from "node:test";
 import {
   buildIngestionPayload,
   ingestionCaptureContext,
+  ingestionContentKind,
+  ingestionReadableContent,
   ingestionSourceLocation,
   ingestionSourceName,
   parseCaptureTags,
@@ -80,8 +82,39 @@ test("douyin submissions keep share text and local transcription options", () =>
       capture_reason: "稍后审核",
     },
   );
-  assert.equal(ingestionSourceName(job), "抖音视频");
+  assert.equal(ingestionSourceName(job), "抖音内容");
   assert.equal(ingestionSourceLocation(job), job.source_url);
+});
+
+test("douyin image artifacts switch review from transcript to document content", () => {
+  assert.equal(
+    ingestionContentKind({
+      source_type: "douyin",
+      artifacts: [{ kind: "content" }, { kind: "source_image_001" }],
+    }),
+    "document",
+  );
+  assert.equal(
+    ingestionContentKind({
+      source_type: "douyin",
+      artifacts: [{ kind: "transcript" }],
+    }),
+    "transcript",
+  );
+  assert.equal(
+    ingestionContentKind({
+      source_type: "douyin",
+      current_step: "Downloading Douyin images 1/3",
+    }),
+    "document",
+  );
+  assert.equal(
+    ingestionReadableContent(
+      "# 图文标题\n\n正文\n\n## 图片\n\n![图 1](<https://example.com/image>)",
+      { source_type: "douyin", artifacts: [{ kind: "source_image_001" }] },
+    ),
+    "# 图文标题\n\n正文",
+  );
 });
 
 test("capture context is normalized for submission and display", () => {

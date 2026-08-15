@@ -76,6 +76,15 @@ class CandidateSummaryRequest(BaseModel):
     content: str = Field(min_length=1, max_length=30_000)
 
 
+_IMAGE_MEDIA_TYPES = {
+    ".avif": "image/avif",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+}
+
+
 def create_app(
     config: IngestionConfig,
     start_worker: bool = True,
@@ -165,7 +174,7 @@ def create_app(
                 "web_page": {"available": True, "reason": None},
                 "douyin": {
                     "available": True,
-                    "reason": "仅支持无需登录即可访问的公开抖音视频",
+                    "reason": "仅支持无需登录即可访问的公开抖音视频或图文",
                 },
             },
         }
@@ -378,6 +387,8 @@ def create_app(
                 raise ValueError("已发布资料不能在采集流程中替换摘要。")
             source = _summary_source_artifact(queue, job)
             source_text = source.path.read_text(encoding="utf-8").strip()
+            if job.source_type == "douyin" and source.kind == "content":
+                source_text = source_text.partition("\n## 图片")[0].strip()
             return {
                 "prompt": build_summary_prompt(
                     source_type=job.source_type,
@@ -427,6 +438,15 @@ def create_app(
             raise HTTPException(status_code=404, detail="Artifact not found") from error
         if artifact.kind in {"transcript", "content", "candidate_summary"}:
             return FileResponse(artifact.path, media_type="text/plain; charset=utf-8")
+        if artifact.kind.startswith("source_image_"):
+            return FileResponse(
+                artifact.path,
+                media_type=_IMAGE_MEDIA_TYPES.get(
+                    artifact.path.suffix.lower(),
+                    "application/octet-stream",
+                ),
+                filename=artifact.path.name,
+            )
         return FileResponse(artifact.path, filename=artifact.path.name)
 
     @app.get("/api/events")
@@ -533,9 +553,15 @@ def _artifact_payload(job_id: str, artifact) -> dict:
 
 
 def _summary_source_artifact(queue: JobQueue, job: Job):
-    expected_kind = "content" if job.source_type == "web-page" else "transcript"
+    available = queue.list_artifacts(job.id)
+    expected_kind = (
+        "content"
+        if job.source_type == "web-page"
+        or any(item.kind == "content" for item in available)
+        else "transcript"
+    )
     artifact = next(
-        (item for item in queue.list_artifacts(job.id) if item.kind == expected_kind),
+        (item for item in available if item.kind == expected_kind),
         None,
     )
     if artifact is None:

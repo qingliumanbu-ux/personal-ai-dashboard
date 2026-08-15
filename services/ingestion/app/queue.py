@@ -358,13 +358,19 @@ class JobQueue:
         if job.source_type == "local-video":
             required = {"transcript", "subtitles", "metadata"}
         elif job.source_type == "douyin":
-            required = {
-                "transcript",
-                "subtitles",
-                "metadata",
-                "source_media",
-                "source_metadata",
-            }
+            artifact_kinds = {draft.kind for draft in drafts}
+            if "content" in artifact_kinds:
+                required = {"content", "source_metadata"}
+                if not any(kind.startswith("source_image_") for kind in artifact_kinds):
+                    raise ValueError("Douyin image provider did not produce source images")
+            else:
+                required = {
+                    "transcript",
+                    "subtitles",
+                    "metadata",
+                    "source_media",
+                    "source_metadata",
+                }
         else:
             required = {"content", "metadata", "source_snapshot"}
         if not required.issubset({draft.kind for draft in drafts}):
@@ -515,9 +521,13 @@ class JobQueue:
 
     def review(self, job_id: str, decision: str, note: str = "") -> Job:
         job = self.get(job_id)
+        has_content = any(
+            artifact.kind == "content" for artifact in self.list_artifacts(job_id)
+        )
         subject = (
             "Transcript"
-            if job.source_type in {"local-video", "douyin"}
+            if job.source_type == "local-video"
+            or (job.source_type == "douyin" and not has_content)
             else "Content"
         )
         transitions = {
@@ -580,13 +590,32 @@ class JobQueue:
                     ("metadata", job.output_dir / "transcript.json"),
                 )
             elif job.source_type == "douyin":
-                expected = (
-                    ("transcript", job.output_dir / "transcript.txt"),
-                    ("subtitles", job.output_dir / "transcript.srt"),
-                    ("metadata", job.output_dir / "transcript.json"),
-                    ("source_metadata", job.output_dir / "source.json"),
-                    ("source_media", job.output_dir / "source.mp4"),
-                )
+                content_path = job.output_dir / "content.md"
+                source_metadata_path = job.output_dir / "source.json"
+                image_paths = sorted((job.output_dir / "images").glob("*"))
+                if not image_paths:
+                    image_paths = sorted(
+                        path
+                        for path in job.output_dir.iterdir()
+                        if path.suffix.lower() in {".avif", ".jpg", ".jpeg", ".png", ".webp"}
+                    )
+                if content_path.is_file() and source_metadata_path.is_file() and image_paths:
+                    expected = (
+                        ("content", content_path),
+                        ("source_metadata", source_metadata_path),
+                        *tuple(
+                            (f"source_image_{index:03d}", path)
+                            for index, path in enumerate(image_paths, start=1)
+                        ),
+                    )
+                else:
+                    expected = (
+                        ("transcript", job.output_dir / "transcript.txt"),
+                        ("subtitles", job.output_dir / "transcript.srt"),
+                        ("metadata", job.output_dir / "transcript.json"),
+                        ("source_metadata", source_metadata_path),
+                        ("source_media", job.output_dir / "source.mp4"),
+                    )
             else:
                 expected = (
                     ("content", job.output_dir / "content.md"),

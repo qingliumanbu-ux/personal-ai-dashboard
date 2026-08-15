@@ -158,6 +158,52 @@ class ApiTests(unittest.TestCase):
             self.assertIsNone(created.json()["source_path"])
             self.assertEqual(rejected.status_code, 422)
 
+    def test_douyin_image_summary_prompt_omits_image_urls(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = IngestionConfig.for_testing(root, ())
+            app = create_app(config, start_worker=False)
+            queue = app.state.queue
+            job = queue.submit_douyin("https://v.douyin.com/ImagePost1/")
+            claimed = queue.claim_next("worker-a", lease_seconds=30)
+            assert claimed is not None
+            claimed.output_dir.mkdir(parents=True)
+            content = claimed.output_dir / "content.md"
+            metadata = claimed.output_dir / "source.json"
+            image = claimed.output_dir / "001.webp"
+            content.write_text(
+                "# 图文标题\n\n正文内容。\n\n## 图片\n\n"
+                "![图 1](<https://p3-sign.douyinpic.com/tos-cn-i/image-1>)\n",
+                encoding="utf-8",
+            )
+            metadata.write_text('{"source_type":"douyin-image"}', encoding="utf-8")
+            image.write_bytes(b"image")
+            queue.complete(
+                job.id,
+                "worker-a",
+                (
+                    ArtifactDraft("content", content),
+                    ArtifactDraft("source_metadata", metadata),
+                    ArtifactDraft("source_image_001", image),
+                ),
+                None,
+            )
+
+            with TestClient(app) as client:
+                response = client.get(f"/api/jobs/{job.id}/summary-prompt")
+                detail = client.get(f"/api/jobs/{job.id}").json()
+                image_artifact = next(
+                    artifact
+                    for artifact in detail["artifacts"]
+                    if artifact["kind"] == "source_image_001"
+                )
+                image_response = client.get(image_artifact["download_url"])
+
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("正文内容。", response.json()["prompt"])
+            self.assertNotIn("douyinpic.com", response.json()["prompt"])
+            self.assertEqual(image_response.headers["content-type"], "image/webp")
+
     def test_health_exposes_vad_capability_and_rejects_unavailable_vad(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -189,7 +235,7 @@ class ApiTests(unittest.TestCase):
                 health.json()["capabilities"]["douyin"],
                 {
                     "available": True,
-                    "reason": "仅支持无需登录即可访问的公开抖音视频",
+                    "reason": "仅支持无需登录即可访问的公开抖音视频或图文",
                 },
             )
             self.assertEqual(rejected.status_code, 422)
