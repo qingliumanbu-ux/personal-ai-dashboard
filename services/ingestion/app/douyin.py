@@ -322,7 +322,13 @@ class _TranscriptionControl:
 
 
 _BROWSER_VIDEO_SCRIPT = """(async () => {
-  const preferredHosts = ['.douyinvod.com', '.bytevcloud.com', '.pstatp.com'];
+  const preferredHosts = [
+    '.douyinvod.com',
+    '.douyinstatic.com',
+    '.bytevcloud.com',
+    '.pstatp.com',
+    '.byteimg.com',
+  ];
   const isPreferredSource = (value) => {
     try {
       const hostname = new URL(value, location.href).hostname.toLowerCase();
@@ -331,13 +337,17 @@ _BROWSER_VIDEO_SCRIPT = """(async () => {
       return false;
     }
   };
+  const parts = location.pathname.split('/').filter(Boolean);
+  const postKind = parts[0] === 'note' ? 'image' : 'video';
   const deadline = Date.now() + 30000;
   let source = '';
-  while (!source && Date.now() < deadline) {
+  while (postKind === 'video' && !source && Date.now() < deadline) {
     const video = Array.from(document.querySelectorAll('video')).find((item) => (
       item.readyState >= 1
       && Number.isFinite(item.duration)
       && item.duration > 1
+      && item.videoWidth > 0
+      && item.videoHeight > 0
       && isPreferredSource(item.currentSrc)
     ));
     source = video?.currentSrc || '';
@@ -345,12 +355,16 @@ _BROWSER_VIDEO_SCRIPT = """(async () => {
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
   }
-  const parts = location.pathname.split('/').filter(Boolean);
   const title = document.querySelector('meta[property="og:title"]')?.content
     || document.querySelector('h1')?.textContent
     || document.title
     || '';
-  return { media_url: source, video_id: parts.at(-1) || '', title };
+  return {
+    media_url: source,
+    video_id: parts.at(-1) || '',
+    title,
+    post_kind: postKind,
+  };
 })()"""
 
 
@@ -429,8 +443,11 @@ def resolve_douyin_video_in_browser(
         media_url = str(payload["media_url"])
         video_id = str(payload["video_id"]).strip()
         title = str(payload.get("title") or "").strip()[:200]
+        post_kind = str(payload.get("post_kind") or "").strip()
     except (KeyError, TypeError, ValueError) as error:
         raise DouyinExtractionError("隔离浏览器返回的抖音视频数据无效。") from error
+    if post_kind == "image":
+        raise UnsupportedDouyinPostError("该链接是抖音图文帖，当前 MVP 暂不支持图文提取。")
     if not media_url:
         raise DouyinExtractionError("公开抖音页面未提供可下载的视频媒体地址。")
     if not re.fullmatch(r"\d{5,}", video_id):

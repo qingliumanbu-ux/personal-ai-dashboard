@@ -14,6 +14,7 @@ from app.douyin import (
     DouyinProvider,
     DouyinVideo,
     InvalidDouyinSourceError,
+    UnsupportedDouyinPostError,
     download_douyin_media,
     fetch_douyin_page,
     resolve_douyin_video_in_browser,
@@ -59,6 +60,8 @@ class DouyinProviderTests(unittest.TestCase):
                 script = base64.b64decode(command[-1]).decode("utf-8")
                 self.assertIn("document.querySelectorAll('video')", script)
                 self.assertIn("douyinvod.com", script)
+                self.assertIn("douyinstatic.com", script)
+                self.assertIn("byteimg.com", script)
                 self.assertIn("readyState >= 1", script)
                 kwargs["stdout"].write(
                     json.dumps(
@@ -86,6 +89,28 @@ class DouyinProviderTests(unittest.TestCase):
         self.assertNotIn("--restore", flattened)
         self.assertEqual([command[3] for command in commands], ["open", "eval", "close"])
         self.assertEqual(commands[1][4], "-b")
+
+    def test_browser_fallback_reports_an_image_post_explicitly(self) -> None:
+        def runner(command, **kwargs):
+            if command[-2] == "-b":
+                kwargs["stdout"].write(
+                    json.dumps(
+                        {
+                            "media_url": "",
+                            "video_id": "7673485154678249971",
+                            "title": "公开图文帖",
+                            "post_kind": "image",
+                        }
+                    ).encode("utf-8")
+                )
+            return subprocess.CompletedProcess(command, 0)
+
+        with self.assertRaisesRegex(UnsupportedDouyinPostError, "图文帖"):
+            resolve_douyin_video_in_browser(
+                "https://v.douyin.com/ImagePost1/",
+                runner=runner,
+                executable=sys.executable,
+            )
 
     def test_provider_falls_back_to_rendered_page_when_html_data_is_empty(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
