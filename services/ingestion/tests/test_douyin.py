@@ -60,8 +60,8 @@ class DouyinProviderTests(unittest.TestCase):
                 script = base64.b64decode(command[-1]).decode("utf-8")
                 self.assertIn("document.querySelectorAll('video')", script)
                 self.assertIn("douyinvod.com", script)
-                self.assertIn("douyinstatic.com", script)
-                self.assertIn("byteimg.com", script)
+                self.assertNotIn("douyinstatic.com", script)
+                self.assertNotIn("byteimg.com", script)
                 self.assertIn("readyState >= 1", script)
                 kwargs["stdout"].write(
                     json.dumps(

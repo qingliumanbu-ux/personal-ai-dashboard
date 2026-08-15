@@ -324,10 +324,8 @@ class _TranscriptionControl:
 _BROWSER_VIDEO_SCRIPT = """(async () => {
   const preferredHosts = [
     '.douyinvod.com',
-    '.douyinstatic.com',
     '.bytevcloud.com',
     '.pstatp.com',
-    '.byteimg.com',
   ];
   const isPreferredSource = (value) => {
     try {
