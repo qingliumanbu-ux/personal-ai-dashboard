@@ -6450,7 +6450,7 @@ h3 {
 .ingestion-flow {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 0;
   margin: 30px 0 24px;
   padding: 22px 18px 18px;
@@ -6462,8 +6462,8 @@ h3 {
 .ingestion-flow__track {
   position: absolute;
   top: 34px;
-  right: calc(12.5% + 18px);
-  left: calc(12.5% + 18px);
+  right: calc(10% + 18px);
+  left: calc(10% + 18px);
   height: 2px;
   overflow: hidden;
   background: var(--line-strong);
@@ -6541,6 +6541,7 @@ h3 {
 }
 
 .ingestion-review,
+.ingestion-summary,
 .ingestion-publish,
 .ingestion-transcript {
   margin-top: 18px;
@@ -6551,6 +6552,7 @@ h3 {
 }
 
 .ingestion-review,
+.ingestion-summary,
 .ingestion-publish {
   border-color: var(--ingestion-signal-soft);
   box-shadow: 0 10px 26px rgba(15, 143, 120, 0.07);
@@ -6570,7 +6572,8 @@ h3 {
   letter-spacing: 0;
 }
 
-.ingestion-review textarea {
+.ingestion-review textarea,
+.ingestion-summary textarea {
   width: 100%;
   min-height: 82px;
   margin-top: 15px;
@@ -6586,17 +6589,78 @@ h3 {
   line-height: 1.6;
 }
 
-.ingestion-review textarea:focus {
+.ingestion-review textarea:focus,
+.ingestion-summary textarea:focus {
   border-color: var(--ingestion-signal-soft);
   box-shadow: 0 0 0 3px var(--ingestion-signal-wash);
 }
 
 .ingestion-review__actions,
+.ingestion-summary__actions,
 .ingestion-runtime-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 12px;
+}
+
+.ingestion-summary__intro,
+.ingestion-summary__feedback {
+  margin-top: 12px;
+  color: var(--ink-soft);
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.ingestion-summary__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 13px;
+}
+
+.ingestion-summary__saved {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ingestion-signal-deep);
+  font-size: 10px;
+}
+
+.ingestion-summary__saved svg {
+  width: 14px;
+}
+
+.ingestion-summary__prompt {
+  margin-top: 13px;
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+
+.ingestion-summary__prompt summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.ingestion-summary__prompt textarea {
+  min-height: 220px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.ingestion-summary__editor {
+  display: grid;
+  gap: 7px;
+  margin-top: 15px;
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.ingestion-summary__editor textarea {
+  min-height: 260px;
+  font-family: var(--font-body);
 }
 
 .ingestion-action,

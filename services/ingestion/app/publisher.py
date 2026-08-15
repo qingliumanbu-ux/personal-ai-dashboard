@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Callable
 
 from .queue import JobQueue, Publication
+from .summary import SUMMARY_PROMPT_VERSION, validate_candidate_summary
 
 
 RAW_VIDEO_DIRECTORY = Path("04-来源资料") / "视频"
@@ -143,6 +144,7 @@ class Publisher:
         filename = f"{_safe_filename(title)}-{publication_id[:8]}.md"
         relative_path = (RAW_VIDEO_DIRECTORY / filename).as_posix()
         capture_frontmatter, capture_body = _capture_markdown(job.params)
+        summary_frontmatter, summary_body = _summary_markdown(job, artifacts, transcript)
         markdown = "\n".join(
             (
                 "---",
@@ -156,6 +158,7 @@ class Publisher:
                 f"transcript_sha256: {json.dumps(transcript.sha256)}",
                 f"published_at: {json.dumps(review.created_at)}",
                 *capture_frontmatter,
+                *summary_frontmatter,
                 "---",
                 "",
                 f"# {title}",
@@ -166,6 +169,7 @@ class Publisher:
                 f"- 原文件：`{job.source_path.name}`",
                 "",
                 *capture_body,
+                *summary_body,
                 "## 全文转写",
                 "",
                 transcript_text,
@@ -207,6 +211,7 @@ class Publisher:
         relative_path = (RAW_WEB_DIRECTORY / filename).as_posix()
         body = _without_leading_title(content_text, title)
         capture_frontmatter, capture_body = _capture_markdown(job.params)
+        summary_frontmatter, summary_body = _summary_markdown(job, artifacts, content)
         markdown = "\n".join(
             (
                 "---",
@@ -221,6 +226,7 @@ class Publisher:
                 f"captured_at: {json.dumps(captured_at)}",
                 f"published_at: {json.dumps(review.created_at)}",
                 *capture_frontmatter,
+                *summary_frontmatter,
                 "---",
                 "",
                 f"# {title}",
@@ -232,6 +238,7 @@ class Publisher:
                 f"- 采集时间：{captured_at}",
                 "",
                 *capture_body,
+                *summary_body,
                 "## 网页正文",
                 "",
                 body,
@@ -275,6 +282,7 @@ class Publisher:
         filename = f"{_safe_filename(title)}-{publication_id[:8]}.md"
         relative_path = (RAW_VIDEO_DIRECTORY / filename).as_posix()
         capture_frontmatter, capture_body = _capture_markdown(job.params)
+        summary_frontmatter, summary_body = _summary_markdown(job, artifacts, transcript)
         markdown = "\n".join(
             (
                 "---",
@@ -291,6 +299,7 @@ class Publisher:
                 f"captured_at: {json.dumps(captured_at)}",
                 f"published_at: {json.dumps(review.created_at)}",
                 *capture_frontmatter,
+                *summary_frontmatter,
                 "---",
                 "",
                 f"# {title}",
@@ -304,6 +313,7 @@ class Publisher:
                 "- 媒体保留：仅保存在任务 Run 目录，不复制到知识库",
                 "",
                 *capture_body,
+                *summary_body,
                 "## 全文转写",
                 "",
                 transcript_text,
@@ -408,3 +418,27 @@ def _capture_markdown(params: dict[str, str]) -> tuple[tuple[str, ...], tuple[st
         body.append(f"- 收藏原因：{re.sub(r'\s+', ' ', reason)}")
     body.append("")
     return tuple(frontmatter), tuple(body)
+
+
+def _summary_markdown(job, artifacts, source_artifact) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    summary = artifacts.get("candidate_summary")
+    if summary is None:
+        if job.params.get("summary_required") == "true":
+            raise PublicationStateError("发布前必须先保存 AI 候选摘要。")
+        return (), ()
+    content = validate_candidate_summary(summary.path.read_text(encoding="utf-8"))
+    frontmatter = (
+        'summary_origin: "manual-import"',
+        f'summary_prompt_version: {json.dumps(SUMMARY_PROMPT_VERSION)}',
+        f'summary_source_sha256: {json.dumps(source_artifact.sha256)}',
+        f'summary_sha256: {json.dumps(summary.sha256)}',
+    )
+    body = (
+        "## 摘要说明",
+        "",
+        "> 以下内容由用户选择的 AI 生成并在发布前人工核对；它是来源资料的候选说明，不等于正式知识。",
+        "",
+        content,
+        "",
+    )
+    return frontmatter, body

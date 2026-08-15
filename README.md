@@ -131,6 +131,8 @@ npm run privacy:scan
 
 ## 开发验证
 
+当前实施状态与后续阶段见 [V2.3 动态路线图](./docs/roadmap/personal-ai-dashboard-roadmap.html)。路线图中的进度勾选只保存在当前浏览器，不替代 Git、测试和运行数据库的真实状态。
+
 ```bash
 cd Workbench
 npm test

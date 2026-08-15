@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 import json
 import hashlib
+import os
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -665,6 +666,58 @@ class JobQueue:
             path=path,
             size=int(row["size"]),
             sha256=row["sha256"],
+        )
+
+    def save_candidate_summary(self, job_id: str, content: str) -> Artifact:
+        job = self.get(job_id)
+        if job.status not in {"waiting_review", "succeeded"}:
+            raise ValueError(f"Job in {job.status} cannot accept a candidate summary")
+        if self.get_publication(job_id) is not None:
+            raise ValueError("Published jobs cannot replace their candidate summary")
+
+        job.output_dir.mkdir(parents=True, exist_ok=True)
+        target = job.output_dir / "candidate-summary.md"
+        temporary = job.output_dir / f".candidate-summary.{uuid4().hex}.tmp"
+        try:
+            temporary.write_text(content, encoding="utf-8", newline="\n")
+            os.replace(temporary, target)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+        artifact = self._build_artifact(job, "candidate_summary", target)
+        now = datetime.now(UTC).isoformat()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                """
+                INSERT INTO artifacts (id, job_id, kind, path, size, sha256)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(job_id, kind) DO UPDATE SET
+                    path = excluded.path,
+                    size = excluded.size,
+                    sha256 = excluded.sha256
+                """,
+                (
+                    artifact.id,
+                    artifact.job_id,
+                    artifact.kind,
+                    str(artifact.path),
+                    artifact.size,
+                    artifact.sha256,
+                ),
+            )
+            connection.execute(
+                "UPDATE jobs SET updated_at = ? WHERE id = ?",
+                (now, job_id),
+            )
+            self._insert_event(
+                connection,
+                job_id,
+                "candidate_summary_saved",
+                {"sha256": artifact.sha256, "size": artifact.size},
+            )
+        return next(
+            item for item in self.list_artifacts(job_id) if item.kind == "candidate_summary"
         )
 
     def list_attempts(self, job_id: str) -> list[Attempt]:

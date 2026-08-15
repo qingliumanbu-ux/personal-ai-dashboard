@@ -60,6 +60,17 @@ export function reviewIngestionJob(jobId, decision, note) {
   });
 }
 
+export function loadCandidateSummaryPrompt(jobId) {
+  return request(`/jobs/${encodeURIComponent(jobId)}/summary-prompt`);
+}
+
+export function saveCandidateSummary(jobId, content) {
+  return request(`/jobs/${encodeURIComponent(jobId)}/candidate-summary`, {
+    method: "POST",
+    body: JSON.stringify({ content }),
+  });
+}
+
 export function publishIngestionJob(jobId) {
   return request(`/jobs/${encodeURIComponent(jobId)}/publish`, {
     method: "POST",

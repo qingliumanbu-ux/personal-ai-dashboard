@@ -10,6 +10,28 @@ from app.worker import Worker
 from app.web import FetchedPage, WebPageProvider
 
 
+VALID_SUMMARY = """## AI 候选摘要
+
+这是一份经过人工核对的候选摘要。
+
+## 核心要点
+
+- 保留完整来源正文。
+
+## 建议标签
+
+- 测试
+
+## 可复用方向
+
+- 验证来源资料发布契约。
+
+## 不确定内容
+
+- 无。
+"""
+
+
 class FakeProvider:
     def run(self, job, control) -> ProviderResult:
         job.output_dir.mkdir(parents=True, exist_ok=True)
@@ -32,7 +54,10 @@ class PublisherTests(unittest.TestCase):
             queue = JobQueue(root / "runtime" / "ingestion.db", root / "runs", ())
             job = queue.submit_douyin(
                 "https://v.douyin.com/AbCdEf12/",
-                {"capture_reason": "补充知识采集方案"},
+                {
+                    "capture_reason": "补充知识采集方案",
+                    "summary_required": "true",
+                },
             )
 
             class FakeDouyinProvider:
@@ -69,6 +94,7 @@ class PublisherTests(unittest.TestCase):
                     return ProviderResult(tuple(drafts), None)
 
             Worker(queue, FakeDouyinProvider(), "worker-a").run_once()
+            queue.save_candidate_summary(job.id, VALID_SUMMARY)
             queue.review(job.id, "approved", "内容通过")
             vault = root / "vault"
             vault.mkdir()
@@ -81,6 +107,9 @@ class PublisherTests(unittest.TestCase):
             self.assertIn("source_type: douyin-video", markdown)
             self.assertIn('source_url: "https://v.douyin.com/AbCdEf12/"', markdown)
             self.assertIn("# 收藏夹知识库方案", markdown)
+            self.assertIn('summary_origin: "manual-import"', markdown)
+            self.assertIn("## AI 候选摘要", markdown)
+            self.assertIn("## 全文转写", markdown)
             self.assertIn("抖音视频的本地转写正文。", markdown)
             self.assertEqual(list(vault.rglob("*.mp4")), [])
 
@@ -93,6 +122,7 @@ class PublisherTests(unittest.TestCase):
                 {
                     "capture_tags": '["AI", "Obsidian"]',
                     "capture_reason": "补充网页采集方案",
+                    "summary_required": "true",
                 },
             )
             provider = WebPageProvider(
@@ -106,6 +136,7 @@ class PublisherTests(unittest.TestCase):
                 )
             )
             Worker(queue, provider, "worker-a").run_once()
+            queue.save_candidate_summary(job.id, VALID_SUMMARY)
             queue.review(job.id, "approved", "内容通过")
             vault = root / "vault"
             vault.mkdir()
@@ -122,6 +153,9 @@ class PublisherTests(unittest.TestCase):
             self.assertIn("- 标签：AI、Obsidian", markdown)
             self.assertIn("- 收藏原因：补充网页采集方案", markdown)
             self.assertIn("# Example Article", markdown)
+            self.assertIn('summary_origin: "manual-import"', markdown)
+            self.assertIn("## AI 候选摘要", markdown)
+            self.assertIn("## 网页正文", markdown)
             self.assertIn("Useful source text with enough detail.", markdown)
             self.assertNotIn("<html>", markdown)
 

@@ -3,6 +3,8 @@ import {
   IconAlertTriangle,
   IconCheck,
   IconCircleCheck,
+  IconCopy,
+  IconDeviceFloppy,
   IconFileText,
   IconPlayerPlay,
   IconRefresh,
@@ -20,10 +22,12 @@ import {
   loadIngestionHealth,
   loadIngestionJob,
   loadIngestionJobs,
+  loadCandidateSummaryPrompt,
   loadTranscriptText,
   publishIngestionJob,
   retryIngestionJob,
   reviewIngestionJob,
+  saveCandidateSummary,
 } from "../lib/ingestion-api";
 import {
   buildIngestionPayload,
@@ -106,16 +110,18 @@ function flowProgress(job) {
   if (job.publication) return 100;
   if (job.status === "queued") return 7;
   if (job.status === "running") return Math.round(10 + Number(job.progress || 0) * 45);
-  if (job.status === "waiting_review") return 63;
-  if (job.status === "succeeded") return 82;
-  if (["changes_requested", "rejected"].includes(job.status)) return 68;
+  if (job.status === "waiting_review") {
+    return job.artifacts?.some((item) => item.kind === "candidate_summary") ? 72 : 60;
+  }
+  if (job.status === "succeeded") return 85;
+  if (["changes_requested", "rejected"].includes(job.status)) return 76;
   return Math.max(8, Math.round(Number(job.progress || 0) * 55));
 }
 
 function stepState(job, step) {
   const progress = flowProgress(job);
-  const thresholds = { submit: 1, transcribe: 10, review: 63, publish: 82 };
-  const doneThresholds = { submit: 7, transcribe: 63, review: 82, publish: 100 };
+  const thresholds = { submit: 1, transcribe: 10, summary: 60, review: 72, publish: 85 };
+  const doneThresholds = { submit: 7, transcribe: 60, summary: 72, review: 85, publish: 100 };
   if (progress >= doneThresholds[step]) return "done";
   if (progress >= thresholds[step]) return "active";
   return "pending";
@@ -144,12 +150,19 @@ export function IngestionPage() {
   const [useVad, setUseVad] = useState(true);
   const [reviewNote, setReviewNote] = useState("");
   const [transcript, setTranscript] = useState("");
+  const [summaryPrompt, setSummaryPrompt] = useState("");
+  const [summaryDraft, setSummaryDraft] = useState("");
+  const [summaryCopyState, setSummaryCopyState] = useState("idle");
   const [confirmPublish, setConfirmPublish] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const transcriptArtifactId = detail?.artifacts?.find(
     (item) => ["transcript", "content"].includes(item.kind),
   )?.id;
+  const summaryArtifactId = detail?.artifacts?.find(
+    (item) => item.kind === "candidate_summary",
+  )?.id;
+  const summaryRequired = detail?.params?.summary_required === "true";
   const vadCapability = serviceHealth?.capabilities?.vad;
   const vadAvailable = vadCapability?.available !== false;
   const isWebSource = sourceType === "web-page";
@@ -184,6 +197,9 @@ export function IngestionPage() {
     setReviewNote("");
     setConfirmPublish(false);
     setTranscript("");
+    setSummaryPrompt("");
+    setSummaryDraft("");
+    setSummaryCopyState("idle");
   }, [detail?.id]);
 
   useEffect(() => {
@@ -200,6 +216,21 @@ export function IngestionPage() {
       cancelled = true;
     };
   }, [detail?.id, transcriptArtifactId]);
+
+  useEffect(() => {
+    if (!summaryArtifactId || !detail?.id) return undefined;
+    let cancelled = false;
+    loadTranscriptText(detail.id, summaryArtifactId)
+      .then((text) => {
+        if (!cancelled) setSummaryDraft(text);
+      })
+      .catch(() => {
+        if (!cancelled) setSummaryDraft("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [detail?.id, summaryArtifactId]);
 
   const visibleJobs = useMemo(
     () => jobs.filter((job) => matchesFilter(job, filter)),
@@ -245,6 +276,39 @@ export function IngestionPage() {
       reviewNote.trim() || (decision === "approved" ? "内容通过" : ""),
     );
     setReviewNote("");
+  });
+
+  const prepareSummaryPrompt = () => runAction(async () => {
+    const prepared = await loadCandidateSummaryPrompt(detail.id);
+    setSummaryPrompt(prepared.prompt);
+    if (globalThis.navigator?.clipboard?.writeText) {
+      try {
+        await globalThis.navigator.clipboard.writeText(prepared.prompt);
+        setSummaryCopyState("copied");
+        return;
+      } catch {
+        // Keep the prompt visible for manual selection.
+      }
+    }
+    setSummaryCopyState("manual");
+  });
+
+  const copySummaryPrompt = async () => {
+    if (!summaryPrompt || !globalThis.navigator?.clipboard?.writeText) {
+      setSummaryCopyState("manual");
+      return;
+    }
+    try {
+      await globalThis.navigator.clipboard.writeText(summaryPrompt);
+      setSummaryCopyState("copied");
+    } catch {
+      setSummaryCopyState("manual");
+    }
+  };
+
+  const saveSummary = () => runAction(async () => {
+    await saveCandidateSummary(detail.id, summaryDraft.trim());
+    setSummaryCopyState("saved");
   });
 
   const progress = flowProgress(detail);
@@ -449,6 +513,7 @@ export function IngestionPage() {
                 {[
                   ["submit", "投递"],
                   ["transcribe", detail.source_type === "web-page" ? "抓取" : "转写"],
+                  ["summary", "AI 摘要"],
                   ["review", "审核"],
                   ["publish", "发布"],
                 ].map(([key, label]) => (
@@ -463,6 +528,51 @@ export function IngestionPage() {
                 </div>
               </div>
 
+              {["waiting_review", "succeeded"].includes(detail.status) && !detail.publication ? (
+                <section className="ingestion-summary">
+                  <div className="ingestion-section-title">
+                    <span>AI SUMMARY CANDIDATE</span>
+                    <h3>先理解资料，再决定是否发布</h3>
+                  </div>
+                  <p className="ingestion-summary__intro">
+                    Dashboard 不绑定任何 AI。先复制标准提示词给你选择的 AI，再把结果粘贴回来；完整正文始终保留。
+                  </p>
+                  <div className="ingestion-summary__actions">
+                    <button className="ingestion-action" disabled={busy} onClick={prepareSummaryPrompt} type="button">
+                      <IconCopy />{summaryPrompt ? "重新生成提示词" : "生成并复制提示词"}
+                    </button>
+                    {summaryPrompt ? (
+                      <button className="ingestion-action" disabled={busy} onClick={copySummaryPrompt} type="button">
+                        <IconCopy />再次复制
+                      </button>
+                    ) : null}
+                    {summaryArtifactId ? <span className="ingestion-summary__saved"><IconCheck />候选摘要已保存</span> : null}
+                  </div>
+                  {summaryCopyState === "copied" ? <p className="ingestion-summary__feedback">提示词已复制。可粘贴到任意 AI，生成后把结果放到下方。</p> : null}
+                  {summaryCopyState === "manual" ? <p className="ingestion-summary__feedback">无法自动复制，请从提示词文本框中手动全选复制。</p> : null}
+                  {summaryPrompt ? (
+                    <details className="ingestion-summary__prompt">
+                      <summary>查看标准提示词</summary>
+                      <textarea aria-label="AI 候选摘要标准提示词" readOnly value={summaryPrompt} />
+                    </details>
+                  ) : null}
+                  <label className="ingestion-summary__editor">
+                    <span>粘贴或修改 AI 候选摘要</span>
+                    <textarea
+                      aria-label="AI 候选摘要"
+                      onChange={(event) => setSummaryDraft(event.target.value)}
+                      placeholder={'必须依次包含：\n## AI 候选摘要\n## 核心要点\n## 建议标签\n## 可复用方向\n## 不确定内容'}
+                      value={summaryDraft}
+                    />
+                  </label>
+                  <div className="ingestion-summary__actions">
+                    <button className="ingestion-action ingestion-action--approve" disabled={busy || !summaryDraft.trim()} onClick={saveSummary} type="button">
+                      <IconDeviceFloppy />{summaryArtifactId ? "保存修改" : "保存候选摘要"}
+                    </button>
+                  </div>
+                </section>
+              ) : null}
+
               {detail.status === "waiting_review" ? (
                 <section className="ingestion-review">
                   <div className="ingestion-section-title">
@@ -475,7 +585,7 @@ export function IngestionPage() {
                     value={reviewNote}
                   />
                   <div className="ingestion-review__actions">
-                    <button className="ingestion-action ingestion-action--approve" disabled={busy} onClick={() => review("approved")} type="button">
+                    <button className="ingestion-action ingestion-action--approve" disabled={busy || (summaryRequired && !summaryArtifactId)} onClick={() => review("approved")} type="button">
                       <IconCircleCheck />内容通过
                     </button>
                     <button className="ingestion-action" disabled={busy || !reviewNote.trim()} onClick={() => review("changes_requested")} type="button">
@@ -485,6 +595,7 @@ export function IngestionPage() {
                       不通过
                     </button>
                   </div>
+                  {summaryRequired && !summaryArtifactId ? <p className="ingestion-summary__feedback">保存候选摘要后才能通过审核。</p> : null}
                 </section>
               ) : null}
 
@@ -496,12 +607,12 @@ export function IngestionPage() {
                   </div>
                   <dl>
                     <div><dt>目标位置</dt><dd>{detail.publication_preview?.relative_path || (detail.source_type === "web-page" ? "04-来源资料/网页" : "04-来源资料/视频")}</dd></div>
-                    <div><dt>写入内容</dt><dd>{detail.source_type === "web-page" ? "正文 Markdown，不写入原始 HTML" : "仅 Markdown，不复制原视频"}</dd></div>
+                    <div><dt>写入内容</dt><dd>{summaryArtifactId ? "候选摘要＋完整正文 Markdown" : detail.source_type === "web-page" ? "正文 Markdown，不写入原始 HTML" : "仅 Markdown，不复制原视频"}</dd></div>
                     <div><dt>知识状态</dt><dd>来源资料，不是正式知识</dd></div>
                   </dl>
                   {!confirmPublish ? (
                     <button className="ingestion-action ingestion-action--publish" onClick={() => setConfirmPublish(true)} type="button">
-                      <IconUpload />发布到知识库
+                      <IconUpload />发布为来源资料
                     </button>
                   ) : (
                     <div className="ingestion-confirm">

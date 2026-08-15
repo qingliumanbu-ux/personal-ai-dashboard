@@ -11,6 +11,28 @@ from app.provider import ArtifactDraft, ProviderResult, VadCapability
 from app.worker import Worker
 
 
+VALID_SUMMARY = """## AI 候选摘要
+
+这是一份测试摘要。
+
+## 核心要点
+
+- 保留完整来源。
+
+## 建议标签
+
+- 测试
+
+## 可复用方向
+
+- 验证发布流程。
+
+## 不确定内容
+
+- 无。
+"""
+
+
 class ApiFakeProvider:
     def run(self, job, control) -> ProviderResult:
         job.output_dir.mkdir(parents=True, exist_ok=True)
@@ -341,12 +363,21 @@ class ApiTests(unittest.TestCase):
             with TestClient(app) as client:
                 created = client.post("/api/jobs", json={"source_path": str(source)}).json()
                 Worker(app.state.queue, ApiFakeProvider(), "worker-a").run_once()
+                prompt = client.get(f"/api/jobs/{created['id']}/summary-prompt")
+                saved = client.post(
+                    f"/api/jobs/{created['id']}/candidate-summary",
+                    json={"content": VALID_SUMMARY},
+                )
                 reviewed = client.post(
                     f"/api/jobs/{created['id']}/review",
                     json={"decision": "approved", "note": "内容通过"},
                 )
                 detail = client.get(f"/api/jobs/{created['id']}")
 
+            self.assertEqual(prompt.status_code, 200)
+            self.assertIn("hello", prompt.json()["prompt"])
+            self.assertEqual(saved.status_code, 200)
+            self.assertEqual(saved.json()["kind"], "candidate_summary")
             self.assertEqual(reviewed.status_code, 200)
             self.assertEqual(reviewed.json()["status"], "succeeded")
             self.assertEqual(reviewed.json()["current_step"], "Transcript approved")
@@ -375,6 +406,14 @@ class ApiTests(unittest.TestCase):
             with TestClient(app) as client:
                 created = client.post("/api/jobs", json={"source_path": str(source)}).json()
                 Worker(app.state.queue, ApiFakeProvider(), "worker-a").run_once()
+                blocked = client.post(
+                    f"/api/jobs/{created['id']}/review",
+                    json={"decision": "approved", "note": "内容通过"},
+                )
+                client.post(
+                    f"/api/jobs/{created['id']}/candidate-summary",
+                    json={"content": VALID_SUMMARY},
+                )
                 client.post(
                     f"/api/jobs/{created['id']}/review",
                     json={"decision": "approved", "note": "内容通过"},
@@ -393,10 +432,16 @@ class ApiTests(unittest.TestCase):
                 )
 
             self.assertEqual(missing_confirmation.status_code, 400)
+            self.assertEqual(blocked.status_code, 409)
+            self.assertIn("AI 候选摘要", blocked.json()["detail"])
             self.assertEqual(published.status_code, 200)
             self.assertEqual(published.json(), repeated.json())
             self.assertTrue(published.json()["relative_path"].startswith("04-来源资料/视频/"))
-            self.assertTrue((config.vault_root / Path(published.json()["relative_path"])).is_file())
+            published_path = config.vault_root / Path(published.json()["relative_path"])
+            self.assertTrue(published_path.is_file())
+            markdown = published_path.read_text(encoding="utf-8")
+            self.assertIn("## AI 候选摘要", markdown)
+            self.assertIn("## 全文转写", markdown)
 
     def test_changes_requested_requires_a_note_and_allows_a_new_job(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

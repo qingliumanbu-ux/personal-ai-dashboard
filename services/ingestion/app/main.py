@@ -39,6 +39,12 @@ from .queue import (
     Publication,
 )
 from .worker import Worker
+from .summary import (
+    SUMMARY_PROMPT_VERSION,
+    SummaryValidationError,
+    build_summary_prompt,
+    validate_candidate_summary,
+)
 
 
 class CreateJobRequest(BaseModel):
@@ -64,6 +70,10 @@ class PublishJobRequest(BaseModel):
 
 class RetryJobRequest(BaseModel):
     vad: bool | None = None
+
+
+class CandidateSummaryRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=30_000)
 
 
 def create_app(
@@ -280,11 +290,13 @@ def create_app(
             payload["publication"] = (
                 _publication_payload(publication) if publication is not None else None
             )
-            preview = (
-                publisher.preview(job_id)
-                if publication is None and job.status == "succeeded"
-                else None
-            )
+            preview = None
+            publication_blocker = None
+            if publication is None and job.status == "succeeded":
+                try:
+                    preview = publisher.preview(job_id)
+                except PublicationStateError as error:
+                    publication_blocker = str(error)
             payload["publication_preview"] = (
                 {
                     "id": preview.id,
@@ -293,6 +305,7 @@ def create_app(
                 if preview is not None
                 else None
             )
+            payload["publication_blocker"] = publication_blocker
             return payload
         except JobNotFoundError as error:
             raise HTTPException(status_code=404, detail="Job not found") from error
@@ -339,10 +352,56 @@ def create_app(
     @app.post("/api/jobs/{job_id}/review")
     def review_job(job_id: str, payload: ReviewJobRequest) -> dict:
         try:
+            job = queue.get(job_id)
+            if (
+                payload.decision == "approved"
+                and job.params.get("summary_required") == "true"
+                and not any(
+                    artifact.kind == "candidate_summary"
+                    for artifact in queue.list_artifacts(job_id)
+                )
+            ):
+                raise ValueError("请先生成、粘贴并保存 AI 候选摘要，再通过内容审核。")
             return _job_payload(queue.review(job_id, payload.decision, payload.note))
         except JobNotFoundError as error:
             raise HTTPException(status_code=404, detail="Job not found") from error
         except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.get("/api/jobs/{job_id}/summary-prompt")
+    def summary_prompt(job_id: str) -> dict:
+        try:
+            job = queue.get(job_id)
+            if job.status not in {"waiting_review", "succeeded"}:
+                raise ValueError(f"Job in {job.status} cannot prepare a summary")
+            if queue.get_publication(job_id) is not None:
+                raise ValueError("已发布资料不能在采集流程中替换摘要。")
+            source = _summary_source_artifact(queue, job)
+            source_text = source.path.read_text(encoding="utf-8").strip()
+            return {
+                "prompt": build_summary_prompt(
+                    source_type=job.source_type,
+                    source_text=source_text,
+                    source_sha256=source.sha256,
+                    capture_reason=job.params.get("capture_reason", ""),
+                ),
+                "prompt_version": SUMMARY_PROMPT_VERSION,
+                "source_sha256": source.sha256,
+            }
+        except JobNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Job not found") from error
+        except (OSError, ValueError, SummaryValidationError) as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.post("/api/jobs/{job_id}/candidate-summary")
+    def save_candidate_summary(job_id: str, payload: CandidateSummaryRequest) -> dict:
+        try:
+            content = validate_candidate_summary(payload.content)
+            artifact = queue.save_candidate_summary(job_id, content)
+            return _artifact_payload(job_id, artifact)
+        except JobNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Job not found") from error
+        except (OSError, ValueError, SummaryValidationError) as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
 
     @app.post("/api/jobs/{job_id}/publish")
@@ -366,7 +425,7 @@ def create_app(
             artifact = queue.get_artifact(job_id, artifact_id)
         except (JobNotFoundError, OSError) as error:
             raise HTTPException(status_code=404, detail="Artifact not found") from error
-        if artifact.kind in {"transcript", "content"}:
+        if artifact.kind in {"transcript", "content", "candidate_summary"}:
             return FileResponse(artifact.path, media_type="text/plain; charset=utf-8")
         return FileResponse(artifact.path, filename=artifact.path.name)
 
@@ -423,7 +482,7 @@ def _capture_params(payload: CreateJobRequest) -> dict[str, str]:
     if payload.source_text is not None and len(payload.source_text.strip()) > 4_000:
         raise HTTPException(status_code=422, detail="分享文本不能超过 4000 个字符。")
 
-    params = {}
+    params = {"summary_required": "true"}
     if tags:
         params["capture_tags"] = json.dumps(tags, ensure_ascii=False)
     if reason:
@@ -460,6 +519,28 @@ def _publication_payload(publication: Publication) -> dict:
         "relative_path": publication.relative_path,
         "created_at": publication.created_at,
     }
+
+
+def _artifact_payload(job_id: str, artifact) -> dict:
+    return {
+        "id": artifact.id,
+        "kind": artifact.kind,
+        "name": artifact.path.name,
+        "size": artifact.size,
+        "sha256": artifact.sha256,
+        "download_url": f"/api/jobs/{job_id}/artifacts/{artifact.id}",
+    }
+
+
+def _summary_source_artifact(queue: JobQueue, job: Job):
+    expected_kind = "content" if job.source_type == "web-page" else "transcript"
+    artifact = next(
+        (item for item in queue.list_artifacts(job.id) if item.kind == expected_kind),
+        None,
+    )
+    if artifact is None:
+        raise ValueError("任务缺少可用于生成摘要的正文产物。")
+    return artifact
 
 
 def _error_response(status_code: int, detail: str):

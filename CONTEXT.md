@@ -16,6 +16,14 @@ _Avoid_: Workbench backend, standalone service product
 Reviewed source material explicitly added to the source layer of the knowledge base. It is evidence, not formal knowledge.
 _Avoid_: Formal knowledge, Wiki publication
 
+**Candidate Summary**:
+A structured, human-reviewed explanation generated outside or through a replaceable Summary Provider. It remains attached to the complete source text and is not formal knowledge.
+_Avoid_: Automatic truth, replacement for source evidence
+
+**Summary Provider**:
+A replaceable adapter that prepares or generates a Candidate Summary. Manual copy/paste is the permanent fallback; no vendor is part of the knowledge contract.
+_Avoid_: Codex-only summary pipeline, provider-owned knowledge format
+
 **Knowledge View**:
 The read-only index, search, and reader for the connected knowledge base.
 _Avoid_: Vault editor, publisher
