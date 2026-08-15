@@ -6,6 +6,21 @@ from app.queue import DuplicateJobError, InvalidSourcePathError, JobQueue
 
 
 class JobQueueTests(unittest.TestCase):
+    def test_retry_can_override_vad_parameter(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source_root = root / "sources"
+            source_root.mkdir()
+            source = source_root / "clip.mp4"
+            source.write_bytes(b"video")
+            queue = JobQueue(root / "workbench.db", root / "runs", (source_root,))
+            job = queue.submit(source, {"vad": "true"})
+            queue.cancel(job.id)
+
+            retried = queue.retry(job.id, {"vad": "false"})
+
+            self.assertEqual(retried.params["vad"], "false")
+
     def test_heartbeat_progress_is_monotonic_and_emits_progress_event(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

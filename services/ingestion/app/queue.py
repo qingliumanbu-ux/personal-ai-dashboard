@@ -394,20 +394,23 @@ class JobQueue:
             )
             self._insert_event(connection, job_id, "cancelled", {"status": "cancelled"})
 
-    def retry(self, job_id: str) -> Job:
+    def retry(self, job_id: str, params_override: dict[str, str] | None = None) -> Job:
         job = self.get(job_id)
         if job.status not in {"failed", "cancelled"}:
             raise ValueError(f"Job in {job.status} cannot be retried")
+        params = dict(job.params)
+        if params_override:
+            params.update(params_override)
         with self._connect() as connection:
             connection.execute(
                 """
                 UPDATE jobs
                 SET status = 'queued', progress = 0, current_step = 'Waiting in queue',
                     lease_owner = NULL, lease_expires_at = NULL, pid = NULL,
-                    error = NULL, cancel_requested = 0, updated_at = ?
+                    error = NULL, cancel_requested = 0, params_json = ?, updated_at = ?
                 WHERE id = ?
                 """,
-                (datetime.now(UTC).isoformat(), job_id),
+                (json.dumps(params, ensure_ascii=False), datetime.now(UTC).isoformat(), job_id),
             )
             self._insert_event(connection, job_id, "queued", {"status": "queued"})
         return self.get(job_id)

@@ -74,10 +74,10 @@ export function cancelIngestionJob(jobId) {
   });
 }
 
-export function retryIngestionJob(jobId) {
+export function retryIngestionJob(jobId, vad) {
   return request(`/jobs/${encodeURIComponent(jobId)}/retry`, {
     method: "POST",
-    body: JSON.stringify({}),
+    body: JSON.stringify(typeof vad === "boolean" ? { vad } : {}),
   });
 }
 

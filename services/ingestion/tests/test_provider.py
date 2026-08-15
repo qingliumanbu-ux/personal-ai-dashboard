@@ -5,7 +5,7 @@ import unittest
 import wave
 from pathlib import Path
 
-from app.provider import FasterWhisperProvider
+from app.provider import FasterWhisperProvider, VadCapability
 from app.queue import JobQueue
 
 
@@ -25,6 +25,32 @@ class RecordingControl:
 
 
 class ProviderTests(unittest.TestCase):
+    def test_vad_unavailable_fails_before_starting_transcription(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source_root = root / "sources"
+            source_root.mkdir()
+            source = source_root / "clip.mp4"
+            source.write_bytes(b"video")
+            script = root / "fake_transcribe.py"
+            script.write_text("raise SystemExit(99)", encoding="utf-8")
+            queue = JobQueue(root / "workbench.db", root / "runs", (source_root,))
+            queue.submit(source, {"language": "zh", "model": "small", "vad": "true"})
+            job = queue.claim_next("worker-a", 30)
+            assert job is not None
+            control = RecordingControl()
+            provider = FasterWhisperProvider(
+                python_path=Path(sys.executable),
+                script_path=script,
+                model_dir=root / "model",
+                vad_probe=lambda _: VadCapability(False, "VAD runtime is unavailable"),
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "VAD runtime is unavailable"):
+                provider.run(job, control)
+
+            self.assertIsNone(control.pid)
+
     def test_default_duration_probe_reports_real_seconds(self) -> None:
         if importlib.util.find_spec("av") is None:
             self.skipTest("PyAV is unavailable in the active Python environment")

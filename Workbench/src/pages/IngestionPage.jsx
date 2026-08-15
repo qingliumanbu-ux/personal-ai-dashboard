@@ -109,6 +109,7 @@ function matchesFilter(job, filter) {
 
 export function IngestionPage() {
   const [serviceOnline, setServiceOnline] = useState(null);
+  const [serviceHealth, setServiceHealth] = useState(null);
   const [jobs, setJobs] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -123,10 +124,13 @@ export function IngestionPage() {
   const transcriptArtifactId = detail?.artifacts?.find(
     (item) => item.kind === "transcript",
   )?.id;
+  const vadCapability = serviceHealth?.capabilities?.vad;
+  const vadAvailable = vadCapability?.available !== false;
 
   const refresh = useCallback(async () => {
     try {
-      await loadIngestionHealth();
+      const health = await loadIngestionHealth();
+      setServiceHealth(health);
       setServiceOnline(true);
       const nextJobs = await loadIngestionJobs();
       setJobs(nextJobs);
@@ -136,6 +140,7 @@ export function IngestionPage() {
       else setDetail(null);
       setError("");
     } catch (refreshError) {
+      setServiceHealth(null);
       setServiceOnline(false);
       setError(refreshError.message || "无法连接采集服务");
     }
@@ -195,7 +200,7 @@ export function IngestionPage() {
         source_path: normalizedPath,
         language: "zh",
         model: "small",
-        vad: useVad,
+        vad: useVad && vadAvailable,
       });
       setSelectedId(created.id);
       setSourcePath("");
@@ -242,12 +247,13 @@ export function IngestionPage() {
         </label>
         <label className="ingestion-vad">
           <input
-            checked={useVad}
-            disabled={!serviceOnline || busy}
+            checked={useVad && vadAvailable}
+            disabled={!serviceOnline || busy || !vadAvailable}
             onChange={(event) => setUseVad(event.target.checked)}
+            title={!vadAvailable ? vadCapability?.reason : undefined}
             type="checkbox"
           />
-          <span>过滤静音</span>
+          <span>{vadAvailable ? "过滤静音" : "静音过滤暂不可用"}</span>
         </label>
         <button disabled={!serviceOnline || busy || !sourcePath.trim()} type="submit">
           <IconSend aria-hidden="true" />
@@ -416,7 +422,19 @@ export function IngestionPage() {
                     <button disabled={busy} onClick={() => runAction(() => cancelIngestionJob(detail.id))} type="button"><IconX />取消任务</button>
                   ) : null}
                   {["failed", "cancelled"].includes(detail.status) ? (
-                    <button disabled={busy} onClick={() => runAction(() => retryIngestionJob(detail.id))} type="button"><IconRefresh />重新排队</button>
+                    <button
+                      disabled={busy}
+                      onClick={() => runAction(() => retryIngestionJob(
+                        detail.id,
+                        detail.params?.vad === "true" && !vadAvailable ? false : undefined,
+                      ))}
+                      type="button"
+                    >
+                      <IconRefresh />
+                      {detail.params?.vad === "true" && !vadAvailable
+                        ? "关闭静音过滤后重试"
+                        : "重新排队"}
+                    </button>
                   ) : null}
                 </div>
               ) : null}

@@ -15,7 +15,12 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from .config import IngestionConfig
-from .provider import FasterWhisperProvider, TranscriptionProvider
+from .provider import (
+    FasterWhisperProvider,
+    TranscriptionProvider,
+    VadCapability,
+    probe_vad_runtime,
+)
 from .publisher import (
     PublicationConflictError,
     PublicationNotAllowedError,
@@ -49,16 +54,24 @@ class PublishJobRequest(BaseModel):
     confirm: bool = False
 
 
+class RetryJobRequest(BaseModel):
+    vad: bool | None = None
+
+
 def create_app(
     config: IngestionConfig,
     start_worker: bool = True,
     provider: TranscriptionProvider | None = None,
+    vad_capability: VadCapability | None = None,
 ) -> FastAPI:
     queue = JobQueue(config.database_path, config.runs_dir, config.allowed_source_roots)
     publisher = Publisher(queue, config.vault_root)
     config.logs_dir.mkdir(parents=True, exist_ok=True)
     stop_event = threading.Event()
     worker_thread: threading.Thread | None = None
+    active_vad_capability = vad_capability or probe_vad_runtime(
+        config.transcription_python
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -87,6 +100,7 @@ def create_app(
     app.state.publisher = publisher
     app.state.config = config
     app.state.start_worker = start_worker
+    app.state.vad_capability = active_vad_capability
     allowed_origins = [
         f"http://127.0.0.1:{config.port}",
         f"http://localhost:{config.port}",
@@ -112,8 +126,16 @@ def create_app(
         return await call_next(request)
 
     @app.get("/api/health")
-    def health() -> dict[str, str]:
-        return {"status": "ok"}
+    def health() -> dict:
+        return {
+            "status": "ok",
+            "capabilities": {
+                "vad": {
+                    "available": active_vad_capability.available,
+                    "reason": active_vad_capability.reason,
+                }
+            },
+        }
 
     @app.get("/api/jobs")
     def list_jobs(job_status: str | None = None) -> list[dict]:
@@ -129,6 +151,11 @@ def create_app(
 
     @app.post("/api/jobs", status_code=status.HTTP_201_CREATED)
     def create_job(payload: CreateJobRequest) -> dict:
+        if payload.vad and not active_vad_capability.available:
+            raise HTTPException(
+                status_code=422,
+                detail=active_vad_capability.reason or "VAD runtime is unavailable",
+            )
         try:
             job = queue.submit(
                 Path(payload.source_path),
@@ -215,9 +242,25 @@ def create_app(
             raise HTTPException(status_code=409, detail=str(error)) from error
 
     @app.post("/api/jobs/{job_id}/retry")
-    def retry_job(job_id: str) -> dict:
+    def retry_job(job_id: str, payload: RetryJobRequest | None = None) -> dict:
         try:
-            return _job_payload(queue.retry(job_id))
+            job = queue.get(job_id)
+            requested_vad = (
+                payload.vad
+                if payload is not None and payload.vad is not None
+                else job.params.get("vad") == "true"
+            )
+            if requested_vad and not active_vad_capability.available:
+                raise HTTPException(
+                    status_code=422,
+                    detail=active_vad_capability.reason or "VAD runtime is unavailable",
+                )
+            params_override = (
+                {"vad": "true" if payload.vad else "false"}
+                if payload is not None and payload.vad is not None
+                else None
+            )
+            return _job_payload(queue.retry(job_id, params_override))
         except JobNotFoundError as error:
             raise HTTPException(status_code=404, detail="Job not found") from error
         except ValueError as error:

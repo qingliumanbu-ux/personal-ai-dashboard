@@ -28,6 +28,37 @@ class ProviderResult:
     log_path: Path | None
 
 
+@dataclass(frozen=True)
+class VadCapability:
+    available: bool
+    reason: str | None = None
+
+
+def probe_vad_runtime(python_path: Path) -> VadCapability:
+    python_path = Path(python_path)
+    if not python_path.is_file():
+        return VadCapability(False, "Transcription Python is unavailable")
+    creation_flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+    try:
+        result = subprocess.run(
+            [
+                str(python_path),
+                "-c",
+                "from faster_whisper.vad import get_vad_model; get_vad_model()",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=30,
+            creationflags=creation_flags,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return VadCapability(False, "VAD capability check failed")
+    if result.returncode != 0:
+        return VadCapability(False, "VAD runtime could not be loaded")
+    return VadCapability(True)
+
+
 class ExecutionControl(Protocol):
     def set_pid(self, pid: int) -> None: ...
 
@@ -48,18 +79,24 @@ class FasterWhisperProvider:
         model_dir: Path,
         poll_interval: float = 0.5,
         duration_probe: Callable[[Path], float | None] | None = None,
+        vad_probe: Callable[[Path], VadCapability] | None = None,
     ) -> None:
         self.python_path = Path(python_path)
         self.script_path = Path(script_path)
         self.model_dir = Path(model_dir)
         self.poll_interval = poll_interval
         self.duration_probe = duration_probe or self._probe_duration
+        self.vad_probe = vad_probe or probe_vad_runtime
 
     def run(self, job: Job, control: ExecutionControl) -> ProviderResult:
         if not self.python_path.is_file():
             raise FileNotFoundError(f"Transcription Python not found: {self.python_path}")
         if not self.script_path.is_file():
             raise FileNotFoundError(f"Transcription script not found: {self.script_path}")
+        if job.params.get("vad") == "true":
+            capability = self.vad_probe(self.python_path)
+            if not capability.available:
+                raise RuntimeError(capability.reason or "VAD runtime is unavailable")
         job.output_dir.mkdir(parents=True, exist_ok=True)
         log_path = job.output_dir / "transcription.log"
         command = [

@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.config import IngestionConfig
 from app.main import create_app
-from app.provider import ArtifactDraft, ProviderResult
+from app.provider import ArtifactDraft, ProviderResult, VadCapability
 from app.worker import Worker
 
 
@@ -26,6 +26,63 @@ class ApiFakeProvider:
 
 
 class ApiTests(unittest.TestCase):
+    def test_health_exposes_vad_capability_and_rejects_unavailable_vad(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source_root = root / "sources"
+            source_root.mkdir()
+            source = source_root / "clip.mp4"
+            source.write_bytes(b"video")
+            config = IngestionConfig.for_testing(root, (source_root,))
+            capability = VadCapability(False, "onnxruntime could not be loaded")
+
+            with TestClient(
+                create_app(config, start_worker=False, vad_capability=capability)
+            ) as client:
+                health = client.get("/api/health")
+                rejected = client.post(
+                    "/api/jobs",
+                    json={"source_path": str(source), "vad": True},
+                )
+                accepted = client.post(
+                    "/api/jobs",
+                    json={"source_path": str(source), "vad": False},
+                )
+
+            self.assertEqual(
+                health.json()["capabilities"]["vad"],
+                {"available": False, "reason": "onnxruntime could not be loaded"},
+            )
+            self.assertEqual(rejected.status_code, 422)
+            self.assertEqual(accepted.status_code, 201)
+
+    def test_retry_can_disable_vad_when_runtime_is_unavailable(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source_root = root / "sources"
+            source_root.mkdir()
+            source = source_root / "clip.mp4"
+            source.write_bytes(b"video")
+            config = IngestionConfig.for_testing(root, (source_root,))
+            app = create_app(
+                config,
+                start_worker=False,
+                vad_capability=VadCapability(False, "onnxruntime could not be loaded"),
+            )
+            job = app.state.queue.submit(source, {"vad": "true"})
+            app.state.queue.cancel(job.id)
+
+            with TestClient(app) as client:
+                unchanged = client.post(f"/api/jobs/{job.id}/retry", json={})
+                retried = client.post(
+                    f"/api/jobs/{job.id}/retry",
+                    json={"vad": False},
+                )
+
+            self.assertEqual(unchanged.status_code, 422)
+            self.assertEqual(retried.status_code, 200)
+            self.assertEqual(retried.json()["params"]["vad"], "false")
+
     def test_rejects_paths_outside_approved_source_roots(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
