@@ -1,0 +1,20 @@
+/* V7 Design System · Stable tokens
+   Final values consolidated from the approved Design Lab visual layers. */
+
+.design-lab {
+  --lab-bg: #f3f4f6;
+  --lab-nav: rgba(236, 238, 242, 0.92);
+  --lab-surface: #ffffff;
+  --lab-surface-soft: #f8f9fb;
+  --lab-border: #e4e7ec;
+  --lab-border-strong: #d8dce3;
+  --lab-text: #1d2128;
+  --lab-text-2: #56606c;
+  --lab-text-3: #89919d;
+  --lab-accent: #6857df;
+  --lab-accent-soft: #efedff;
+  --lab-success: #3f9b6b;
+  --lab-radius-soft: 14px;
+  --lab-shadow-float: 0 16px 42px rgba(35, 40, 50, 0.065);
+  --lab-shadow-hover: 0 12px 30px rgba(45, 50, 62, 0.085);
+}

@@ -1,0 +1,153 @@
+.daily-review__tomorrow-context {
+  margin: 0;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--ui-border);
+  color: var(--ui-text-secondary);
+  line-height: 1.6;
+}
+
+.daily-review__rules-context {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--ui-border);
+  background: var(--ui-surface-muted);
+}
+
+.daily-review__rules-context > div {
+  display: grid;
+  gap: 2px;
+}
+
+.daily-review__rules-context span {
+  color: var(--ui-text-tertiary);
+  font-size: 11px;
+}
+
+.daily-review__rules-context button {
+  padding: 7px 10px;
+  border: 1px solid var(--ui-border);
+  background: transparent;
+  color: var(--ui-text-secondary);
+}
+
+.daily-review__rules-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.daily-review__rules-list span {
+  padding: 5px 8px;
+  border: 1px solid var(--ui-border);
+  color: var(--ui-text-secondary);
+  font-size: 11px;
+}
+
+.daily-review__tomorrow-list {
+  display: grid;
+}
+
+.daily-review__tomorrow-list article {
+  padding: 16px;
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.daily-review__tomorrow-list article.is-confirmed {
+  box-shadow: inset 3px 0 0 var(--ui-accent);
+}
+
+.daily-review__tomorrow-list article.is-rejected {
+  opacity: 0.58;
+}
+
+.daily-review__tomorrow-head,
+.daily-review__tomorrow-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.daily-review__tomorrow-head span {
+  color: var(--ui-accent-strong);
+  font-size: 10px;
+}
+
+.daily-review__tomorrow-head small,
+.daily-review__tomorrow-meta {
+  color: var(--ui-text-tertiary);
+  font-size: 11px;
+}
+
+.daily-review__tomorrow-list textarea {
+  width: 100%;
+  margin-top: 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--ui-border);
+  background: var(--ui-surface-muted);
+  color: var(--ui-text);
+  resize: vertical;
+}
+
+.daily-review__tomorrow-meta {
+  margin-top: 8px;
+}
+
+.daily-review__tomorrow-meta em {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-style: normal;
+}
+
+.daily-review__tomorrow-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.daily-review__tomorrow-actions button,
+.daily-review__reject-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border: 1px solid var(--ui-border);
+  background: transparent;
+  color: var(--ui-text-secondary);
+}
+
+.daily-review__tomorrow-actions button.is-confirmed {
+  border-color: var(--ui-accent);
+  color: var(--ui-accent-strong);
+}
+
+.daily-review__reject-all {
+  margin: 14px 16px;
+  justify-self: start;
+}
+
+.daily-review__tomorrow-footnote {
+  display: block;
+  padding: 0 16px 16px;
+  color: var(--ui-text-tertiary);
+  line-height: 1.6;
+}
+
+@media (max-width: 760px) {
+  .daily-review__rules-context {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .daily-review__tomorrow-head,
+  .daily-review__tomorrow-meta {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

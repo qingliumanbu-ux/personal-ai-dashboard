@@ -166,6 +166,127 @@ function assertRunnerError(code) {
     error instanceof WikiIngestRunnerError && error.code === code;
 }
 
+const MANUAL_REVIEW_PLAN = [
+  "## 内容适配与证据边界",
+  "",
+  "来源可读，当前仅用于人工测试。",
+  "",
+  "## 概念候选",
+  "",
+  "- 人工候选概念",
+  "",
+  "## 去重与关联",
+  "",
+  "- 暂无可靠去重结论",
+  "",
+  "## Wiki Diff",
+  "",
+  "### 创建文件：`wiki/concepts/manual-test.md`",
+  "```markdown",
+  "# 人工测试概念",
+  "",
+  "这是经过人工二次提炼并确认写入的正式知识。",
+  "```",
+  "",
+  "## 不入库内容与待验证问题",
+  "",
+  "- 暂无",
+  "",
+  "## 二次确认清单",
+  "",
+  "- 创建 wiki/concepts/manual-test.md",
+].join("\n");
+
+test("manual second-stage planning can write an explicitly confirmed Wiki Diff without Codex", async (t) => {
+  const fixture = await createVaultFixture();
+  t.after(fixture.cleanup);
+  const harness = createSpawnHarness([]);
+  const runner = createRunner(fixture.vaultRoot, harness.spawnImpl, {
+    settingsLoader: async () => ({ knowledge: { provider: "manual", model: "none" } }),
+  });
+
+  const started = await runner.startPlan({
+    rawPath: "10_raw/articles/source.md",
+    notesPath: "10_raw/reading-notes/source-notes.md",
+    notesSnapshot: "人工二次提炼测试。",
+  });
+  assert.equal(started.status, WIKI_INGEST_STATUS.AWAITING_REVIEW);
+  assert.equal(started.ai.provider, "manual");
+  assert.equal(started.reviewPlan, null);
+  assert.equal(harness.calls.length, 0);
+
+  const planned = await runner.setManualPlan(started.id, { plan: MANUAL_REVIEW_PLAN });
+  assert.equal(planned.reviewVersion, 1);
+  assert.equal(planned.reviewPlan, MANUAL_REVIEW_PLAN);
+  assert.equal(harness.calls.length, 0);
+
+  const confirmed = await runner.confirmJob(started.id, {
+    expectedReviewVersion: planned.reviewVersion,
+  });
+  assert.equal(confirmed.status, WIKI_INGEST_STATUS.HANDOFF_READY);
+  assert.equal(confirmed.handoff.kind, "manual-wiki-write");
+  assert.equal(confirmed.manualWrite.targets.length, 1);
+  assert.equal(confirmed.manualWrite.targets[0].relativePath, "wiki/concepts/manual-test.md");
+  assert.equal(
+    await readFile(path.join(fixture.vaultRoot, "wiki", "concepts", "manual-test.md"), "utf8").catch(() => null),
+    null,
+  );
+
+  const executed = await runner.executeManualWrite(started.id);
+  assert.equal(executed.status, WIKI_INGEST_STATUS.COMPLETED);
+  assert.deepEqual(executed.result.deltaFiles, ["wiki/concepts/manual-test.md"]);
+  assert.match(
+    await readFile(path.join(fixture.vaultRoot, "wiki", "concepts", "manual-test.md"), "utf8"),
+    /经过人工二次提炼并确认写入/,
+  );
+  assert.equal(harness.calls.length, 0);
+});
+
+test("manual Wiki write refuses targets outside the configured Wiki root", async (t) => {
+  const fixture = await createVaultFixture();
+  t.after(fixture.cleanup);
+  const runner = createRunner(fixture.vaultRoot, createSpawnHarness([]).spawnImpl, {
+    settingsLoader: async () => ({ knowledge: { provider: "manual", model: "none" } }),
+  });
+  const started = await runner.startPlan({
+    rawPath: "10_raw/articles/source.md",
+    notesPath: "10_raw/reading-notes/source-notes.md",
+    notesSnapshot: "越界写入测试。",
+  });
+  const unsafe = MANUAL_REVIEW_PLAN.replaceAll("wiki/concepts/manual-test.md", "10_raw/articles/overwrite.md");
+  const planned = await runner.setManualPlan(started.id, { plan: unsafe });
+  await assert.rejects(
+    runner.confirmJob(started.id, { expectedReviewVersion: planned.reviewVersion }),
+    assertRunnerError("MANUAL_WRITE_PATH_INVALID"),
+  );
+});
+
+test("wiki ingest audit history survives a runner restart", async (t) => {
+  const fixture = await createVaultFixture();
+  t.after(fixture.cleanup);
+  const harness = createSpawnHarness([]);
+  const runner = createRunner(fixture.vaultRoot, harness.spawnImpl, {
+    settingsLoader: async () => ({ knowledge: { provider: "manual", model: "none" } }),
+  });
+
+  const started = await runner.startPlan({
+    rawPath: "10_raw/articles/source.md",
+    notesPath: "10_raw/reading-notes/source-notes.md",
+    notesSnapshot: "持久化历史记录测试。",
+  });
+  const planned = await runner.setManualPlan(started.id, { plan: MANUAL_REVIEW_PLAN });
+  await runner.confirmJob(started.id, { expectedReviewVersion: planned.reviewVersion });
+  await new Promise((resolve) => setTimeout(resolve, 60));
+
+  const restarted = createRunner(fixture.vaultRoot, createSpawnHarness([]).spawnImpl);
+  const history = await restarted.listJobs();
+  const restored = history.find((item) => item.id === started.id);
+  assert.equal(restored?.status, WIKI_INGEST_STATUS.HANDOFF_READY);
+  assert.equal(restored?.sourcePath, "10_raw/articles/source.md");
+  assert.equal(restored?.ai?.provider, "manual");
+  assert.ok(restored?.events?.some((event) => event.type === "status.changed"));
+});
+
 test("planning is a persistent read-only Codex thread and cannot write before confirmation", async (t) => {
   const fixture = await createVaultFixture();
   t.after(fixture.cleanup);
@@ -195,6 +316,7 @@ test("planning is a persistent read-only Codex thread and cannot write before co
   assert.equal(harness.calls.length, 1);
   assert.deepEqual(harness.calls[0].args, [
     "exec",
+    "--skip-git-repo-check",
     "--json",
     "--sandbox",
     "read-only",
@@ -218,6 +340,59 @@ test("planning is a persistent read-only Codex thread and cannot write before co
   assert.equal(planned.turns.at(-1).kind, "plan");
   assert.ok(planned.events.some((event) => event.type === "codex.event"));
   assert.ok(snapshots.includes(WIKI_INGEST_STATUS.AWAITING_REVIEW));
+});
+
+test("planning and confirmed write use the configured knowledge model without changing review gates", async (t) => {
+  const fixture = await createVaultFixture();
+  t.after(fixture.cleanup);
+  const harness = createSpawnHarness([
+    { events: planEvents({ threadId: "thread-model", message: "Plan with model" }) },
+    { events: planEvents({ threadId: "thread-write", message: "Write complete" }) },
+  ]);
+  const runner = createRunner(fixture.vaultRoot, harness.spawnImpl, {
+    settingsLoader: async () => ({
+      knowledge: { provider: "codex_cli", model: "knowledge-model" },
+    }),
+  });
+  const started = await runner.startPlan({
+    rawPath: "10_raw/articles/source.md",
+    notesSnapshot: "一条笔记",
+  });
+  const planned = await waitForStatus(
+    runner,
+    started.id,
+    WIKI_INGEST_STATUS.AWAITING_REVIEW,
+  );
+
+  assert.deepEqual(planned.ai, {
+    provider: "codex_cli",
+    model: "knowledge-model",
+    promptVersion: "wiki-ingest-plan-v1",
+  });
+  assert.deepEqual(harness.calls[0].args.slice(0, 8), [
+    "exec",
+    "--skip-git-repo-check",
+    "--json",
+    "--sandbox",
+    "read-only",
+    "--model",
+    "knowledge-model",
+    "-C",
+  ]);
+
+  await runner.confirmJob(started.id, { expectedReviewVersion: planned.reviewVersion });
+  const completed = await waitForStatus(runner, started.id, WIKI_INGEST_STATUS.COMPLETED);
+  assert.equal(completed.ai.model, "knowledge-model");
+  assert.deepEqual(harness.calls[1].args.slice(0, 8), [
+    "exec",
+    "--skip-git-repo-check",
+    "--json",
+    "--sandbox",
+    "workspace-write",
+    "--model",
+    "knowledge-model",
+    "-C",
+  ]);
 });
 
 test("revision resumes the same read-only thread with the supported argument order", async (t) => {
@@ -527,6 +702,7 @@ test("confirmation launches a new workspace-write execution and reports only Git
   assert.equal(harness.calls.length, 2);
   assert.deepEqual(harness.calls[1].args, [
     "exec",
+    "--skip-git-repo-check",
     "--json",
     "--sandbox",
     "workspace-write",
@@ -767,4 +943,46 @@ test("workspace-write is blocked when input changes during pre-spawn checks", as
     harness.calls.some((call) => call.args.includes("workspace-write")),
     false,
   );
+});
+
+test("runner accepts personal-ai-vault-v1 roots instead of requiring legacy 10_raw/wiki/90_runs", async (t) => {
+  const vaultRoot = await mkdtemp(path.join(tmpdir(), "wiki-ingest-personal-layout-"));
+  t.after(() => rm(vaultRoot, { recursive: true, force: true }));
+  await Promise.all([
+    mkdir(path.join(vaultRoot, "04-来源资料", "视频"), { recursive: true }),
+    mkdir(path.join(vaultRoot, "06-正式知识"), { recursive: true }),
+    mkdir(path.join(vaultRoot, "08-智能体运行"), { recursive: true }),
+  ]);
+  await Promise.all([
+    writeFile(path.join(vaultRoot, "04-来源资料", "视频", "source.md"), "# 来源\n\n真实 Raw。\n", "utf8"),
+    writeFile(path.join(vaultRoot, "06-正式知识", "正式知识索引.md"), "# 索引\n", "utf8"),
+    writeFile(path.join(vaultRoot, "AGENTS.md"), "# Rules\n", "utf8"),
+  ]);
+  const harness = createSpawnHarness([
+    { events: planEvents({ message: "## 内容适配与证据边界\n可提炼。\n## 概念候选\n候选。\n## 去重与关联\n无。\n## Wiki Diff\n无写入。\n## 不入库内容与待验证问题\n无。\n## 二次确认清单\n等待确认。" }) },
+  ]);
+  const runner = createRunner(vaultRoot, harness.spawnImpl, {
+    rawRoot: "04-来源资料",
+    wikiRoot: "06-正式知识",
+    runsRoot: "08-智能体运行",
+  });
+  const started = await runner.startPlan({
+    rawPath: "04-来源资料/视频/source.md",
+    notesSnapshot: "",
+  });
+  const planned = await waitForStatus(runner, started.id, WIKI_INGEST_STATUS.AWAITING_REVIEW);
+  assert.equal(planned.sourcePath, "04-来源资料/视频/source.md");
+  assert.match(harness.calls[0].stdin, /04-来源资料/);
+  assert.match(harness.calls[0].stdin, /06-正式知识/);
+  assert.match(harness.calls[0].stdin, /08-智能体运行/);
+  assert.doesNotMatch(harness.calls[0].stdin, /来源原文已经可靠保存到 10_raw/);
+
+  const handedOff = await runner.createClientHandoffJob(started.id, {
+    expectedReviewVersion: planned.reviewVersion,
+  });
+  assert.match(handedOff.handoff.relativePath, /^08-智能体运行\/ingest_plans\//);
+  assert.equal(handedOff.handoff.relativePath.includes("90_runs"), false);
+  const packet = await readFile(handedOff.handoff.absolutePath, "utf8");
+  assert.match(packet, /06-正式知识/);
+  assert.doesNotMatch(packet, /`wiki\/index\.md`|`wiki\/log\.md`/);
 });

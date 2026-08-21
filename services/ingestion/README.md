@@ -10,9 +10,9 @@ Quick capture accepts either a public URL or platform share text containing a pu
 
 Douyin capture accepts public share text or links from supported Douyin domains. It follows only Douyin page redirects, extracts public video metadata from the page, downloads the media into that job's Run directory, and reuses the configured local faster-whisper transcription provider. It does not use login state or cloud transcription. Image posts, login/verification pages, and unsupported page structures fail explicitly. Publishing writes reviewed Markdown only; the temporary video is never copied into the Vault.
 
-## Manual AI candidate summary
+## AI candidate summary
 
-New jobs require an AI candidate summary before approval. Dashboard generates a versioned prompt containing the extracted text or transcript and its SHA-256 hash. The user deliberately copies that prompt to any AI they choose, then pastes the result back into Dashboard. The service does not call Codex, a cloud model, or any other AI provider automatically.
+New jobs require an AI candidate summary before approval. The ingestion service remains provider-neutral: it generates a versioned prompt containing the extracted text or transcript and its SHA-256 hash, validates the reviewed summary, and stores the accepted artifact. The Workbench UI may, only after the user explicitly clicks “生成 AI 总结”, send that prompt to its configured controlled AI Provider and place the result into an editable draft. The draft is never saved automatically. Manual copy/paste to another AI remains the fallback when the configured Provider is unavailable or the user prefers another model.
 
 The saved Markdown must contain these sections in order: `AI 候选摘要`, `核心要点`, `建议标签`, `可复用方向`, and `不确定内容`. It is stored as `candidate-summary.md` in the job Run directory and registered as a `candidate_summary` artifact. Approval remains blocked until the summary is saved. Existing jobs created before this requirement remain compatible.
 

@@ -9,17 +9,20 @@ import {
   IconPlayerPlay,
   IconRefresh,
   IconSend,
+  IconSparkles,
   IconTags,
   IconUpload,
   IconWorld,
   IconX,
 } from "@tabler/icons-react";
 import { PageHeader } from "../components/PageHeader";
+import { loadAiProviderSettings } from "../lib/api";
 import { formatCompactDate } from "../lib/format";
 import {
   cancelIngestionJob,
   configureIngestionMediaRetention,
   createIngestionJob,
+  generateCandidateSummary,
   ingestionArtifactUrl,
   loadIngestionHealth,
   loadIngestionJob,
@@ -30,6 +33,7 @@ import {
   retryIngestionJob,
   reviewIngestionJob,
   saveCandidateSummary,
+  saveIngestionClassification,
 } from "../lib/ingestion-api";
 import {
   buildIngestionPayload,
@@ -49,7 +53,7 @@ import {
 const FILTERS = [
   ["all", "全部"],
   ["review", "待审核"],
-  ["publish", "待发布"],
+  ["publish", "待归档"],
   ["attention", "需处理"],
 ];
 
@@ -57,7 +61,7 @@ const STATUS = {
   queued: { label: "排队中", tone: "neutral" },
   running: { label: "转写中", tone: "live" },
   waiting_review: { label: "待审核", tone: "review" },
-  succeeded: { label: "已通过 · 待发布", tone: "ready" },
+  succeeded: { label: "已通过 · 待归档", tone: "ready" },
   changes_requested: { label: "待修改", tone: "attention" },
   rejected: { label: "未通过", tone: "muted" },
   failed: { label: "失败", tone: "danger" },
@@ -65,7 +69,7 @@ const STATUS = {
 };
 
 function displayStatus(job) {
-  if (job?.publication) return { label: "已发布", tone: "published" };
+  if (job?.publication) return { label: "已归档", tone: "published" };
   if (["web-page", "douyin"].includes(job?.source_type) && job?.status === "running") {
     return { label: "采集中", tone: "live" };
   }
@@ -118,7 +122,7 @@ function progressReadout(job) {
   if (job?.publication) return "完成";
   if (job?.status === "running") return `${Math.round(job.progress * 100)}%`;
   if (job?.status === "waiting_review") return "等待审核";
-  if (job?.status === "succeeded") return "等待发布";
+  if (job?.status === "succeeded") return "等待归档";
   return displayStatus(job).label;
 }
 
@@ -169,8 +173,18 @@ export function IngestionPage() {
   const [transcript, setTranscript] = useState("");
   const [summaryPrompt, setSummaryPrompt] = useState("");
   const [summaryDraft, setSummaryDraft] = useState("");
+  const [summaryProvenance, setSummaryProvenance] = useState(null);
+  const [summaryProvider, setSummaryProvider] = useState("codex_cli");
   const [summaryCopyState, setSummaryCopyState] = useState("idle");
+  const [generatingSummary, setGeneratingSummary] = useState(false);
   const [savingSummary, setSavingSummary] = useState(false);
+  const [classificationDraft, setClassificationDraft] = useState({
+    domain: "",
+    topics: "",
+    content_kind: "",
+    use_cases: [],
+  });
+  const [savingClassification, setSavingClassification] = useState(false);
   const [confirmPublish, setConfirmPublish] = useState(false);
   const [retentionPolicy, setRetentionPolicy] = useState("delete_now");
   const [confirmRetention, setConfirmRetention] = useState(false);
@@ -189,6 +203,13 @@ export function IngestionPage() {
     (item) => item.kind === "candidate_summary",
   )?.id;
   const summaryRequired = detail?.params?.summary_required === "true";
+  const classificationRequired = detail?.classification?.required === true;
+  const classificationConfirmed = detail?.classification?.confirmed || null;
+  const classificationOptions = detail?.classification?.options || {
+    domains: [],
+    content_kinds: [],
+    use_cases: [],
+  };
   const vadCapability = serviceHealth?.capabilities?.vad;
   const vadAvailable = vadCapability?.available !== false;
   const isWebSource = sourceType === "web-page";
@@ -216,6 +237,20 @@ export function IngestionPage() {
 
   useEffect(() => {
     let cancelled = false;
+    void loadAiProviderSettings()
+      .then((settings) => {
+        if (!cancelled) setSummaryProvider(settings?.summary?.provider || "codex_cli");
+      })
+      .catch(() => {
+        if (!cancelled) setSummaryProvider("codex_cli");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
     let timer = null;
     const poll = async () => {
       await refresh();
@@ -234,8 +269,22 @@ export function IngestionPage() {
     setTranscript("");
     setSummaryPrompt("");
     setSummaryDraft("");
+    setSummaryProvenance(null);
     setSummaryCopyState("idle");
+    setClassificationDraft({ domain: "", topics: "", content_kind: "", use_cases: [] });
   }, [detail?.id]);
+
+  useEffect(() => {
+    if (!detail?.id) return;
+    const source = detail.classification?.confirmed || detail.classification?.suggestion;
+    if (!source) return;
+    setClassificationDraft({
+      domain: source.domain || "",
+      topics: (source.topics || []).join("，"),
+      content_kind: source.content_kind || "",
+      use_cases: source.use_cases || [],
+    });
+  }, [detail?.id, detail?.classification?.confirmed, detail?.classification?.suggestion]);
 
   useEffect(() => {
     setRetentionPolicy(detail?.media_retention?.policy || "delete_now");
@@ -333,6 +382,35 @@ export function IngestionPage() {
     setSummaryCopyState("manual");
   });
 
+  const generateSummary = async () => {
+    if (
+      summaryDraft.trim()
+      && !globalThis.confirm?.("重新生成会替换当前编辑区中的候选总结，但不会改动已经保存的版本。继续吗？")
+    ) return;
+    setBusy(true);
+    setGeneratingSummary(true);
+    setError("");
+    setSummaryCopyState("idle");
+    try {
+      const prepared = await loadCandidateSummaryPrompt(detail.id);
+      setSummaryPrompt(prepared.prompt);
+      const generated = await generateCandidateSummary(prepared.prompt);
+      setSummaryDraft(generated.content || "");
+      setSummaryProvenance({
+        provider: generated.provider || "unknown",
+        model: generated.model || "default",
+        promptVersion: generated.promptVersion || null,
+        generatedAt: generated.generatedAt || null,
+      });
+      setSummaryCopyState("generated");
+    } catch (actionError) {
+      setError(`${actionError.message || "AI 总结生成失败"}。你仍可以展开备用方式，复制标准提示词给任意 AI。`);
+    } finally {
+      setGeneratingSummary(false);
+      setBusy(false);
+    }
+  };
+
   const copySummaryPrompt = async () => {
     if (!summaryPrompt || !globalThis.navigator?.clipboard?.writeText) {
       setSummaryCopyState("manual");
@@ -370,6 +448,29 @@ export function IngestionPage() {
     }
   };
 
+  const saveClassification = async () => {
+    setBusy(true);
+    setSavingClassification(true);
+    setError("");
+    try {
+      await saveIngestionClassification(detail.id, {
+        domain: classificationDraft.domain,
+        topics: classificationDraft.topics
+          .split(/[，,；;\n]/)
+          .map((item) => item.trim())
+          .filter(Boolean),
+        content_kind: classificationDraft.content_kind,
+        use_cases: classificationDraft.use_cases,
+      });
+      await refresh();
+    } catch (actionError) {
+      setError(actionError.message || "分类保存失败");
+    } finally {
+      setSavingClassification(false);
+      setBusy(false);
+    }
+  };
+
   const saveMediaRetention = () => runAction(async () => {
     await configureIngestionMediaRetention(detail.id, retentionPolicy);
     setConfirmRetention(false);
@@ -385,110 +486,151 @@ export function IngestionPage() {
   return (
     <div className="page page--ingestion">
       <PageHeader
-        eyebrow="INGESTION DESK"
-        title="采集与审核"
-        description="粘贴抖音分享文案、公开网页或本地视频。统一经过本地处理、人工审核和明确发布。"
-        aside={(
-          <span className={`ingestion-service ingestion-service--${serviceOnline ? "online" : "offline"}`}>
-            <span />
-            {serviceOnline === null ? "正在连接" : serviceOnline ? "采集服务在线" : "采集服务未启动"}
-          </span>
-        )}
+        eyebrow="知识 / 入库"
+        title="入库工作台"
+        description="把值得保留的资料交给工作台。系统负责本地提取与 AI 候选总结，你负责审核、分类和最终归档到资料中心。"
       />
 
-      <form className="ingestion-submit" onSubmit={submit}>
-        <div className="ingestion-submit__mark">
-          {isWebSource ? <IconWorld aria-hidden="true" /> : isDouyinSource ? <IconPlayerPlay aria-hidden="true" /> : <IconUpload aria-hidden="true" />}
-        </div>
-        <label className="ingestion-source-type">
-          <span>来源类型</span>
-          <select
-            disabled={!serviceOnline || busy}
-            onChange={(event) => {
-              setSourceType(event.target.value);
-              setSourceValue("");
-            }}
-            value={sourceType}
-          >
-            <option value="douyin">抖音分享</option>
-            <option value="web-page">网页链接</option>
-            <option value="local-video">本地视频</option>
-          </select>
-        </label>
-        <label className="ingestion-source-value">
-          <span>{isDouyinSource ? "抖音链接或分享文案" : isWebSource ? "网页链接或分享文本" : "视频文件路径"}</span>
-          {isTextSource ? (
-            <textarea
-              disabled={!serviceOnline || busy}
-              maxLength="4000"
-              onChange={(event) => setSourceValue(event.target.value)}
-              placeholder={isDouyinSource ? "粘贴抖音分享文案或公开链接" : "粘贴网页链接，或包含链接的平台分享文本"}
-              rows="2"
-              value={sourceValue}
-            />
-          ) : (
-            <input
-              disabled={!serviceOnline || busy}
-              onChange={(event) => setSourceValue(event.target.value)}
-              placeholder="粘贴批准目录内的视频完整路径"
-              type="text"
-              value={sourceValue}
-            />
-          )}
-        </label>
-        <button disabled={!serviceOnline || busy || !sourceValue.trim()} type="submit">
-          <IconSend aria-hidden="true" />
-          {isDouyinSource ? "采集抖音" : isWebSource ? "采集网页" : "投递视频"}
-        </button>
-        <div className="ingestion-submit__context">
-          <label>
-            <span>标签（可选）</span>
-            <input
-              disabled={!serviceOnline || busy}
-              onChange={(event) => setCaptureTags(event.target.value)}
-              placeholder="多个标签用逗号分隔"
-              type="text"
-              value={captureTags}
-            />
-          </label>
-          <label>
-            <span>为什么收藏（可选）</span>
-            <input
-              disabled={!serviceOnline || busy}
-              maxLength="500"
-              onChange={(event) => setCaptureReason(event.target.value)}
-              placeholder="例如：补充当前知识库方案"
-              type="text"
-              value={captureReason}
-            />
-          </label>
-          {!isWebSource ? <label className="ingestion-vad">
-            <input
-              checked={useVad && vadAvailable}
-              disabled={!serviceOnline || busy || !vadAvailable}
-              onChange={(event) => setUseVad(event.target.checked)}
-              title={!vadAvailable ? vadCapability?.reason : undefined}
-              type="checkbox"
-            />
-            <span>{vadAvailable ? "过滤静音" : "静音过滤暂不可用"}</span>
-          </label> : <span className="ingestion-web-note">自动提取首个公开链接，不使用登录态</span>}
-          {isDouyinSource ? <span className="ingestion-web-note">媒体仅临时保存在 Run 目录，不上传云端</span> : null}
-        </div>
-      </form>
+      <section className="ingestion-cockpit">
+        <form className="ingestion-capture" onSubmit={submit}>
+          <div className="ingestion-capture__head">
+            <div>
+              <span className="eyebrow">快速入库</span>
+              <h2>添加一条来源</h2>
+              <p>先把原始资料保存下来，分类和正式知识都在审核阶段再决定。</p>
+            </div>
+            <span className="ingestion-capture__local">LOCAL FIRST</span>
+          </div>
 
-      {error ? (
-        <div className="ingestion-alert" role="alert">
-          <IconAlertTriangle aria-hidden="true" />
-          <span>{error}</span>
-          <button aria-label="关闭提示" onClick={() => setError("")} type="button"><IconX /></button>
-        </div>
-      ) : null}
+          <div className="ingestion-source-tabs" role="tablist" aria-label="选择来源类型">
+            {[
+              ["douyin", "抖音", IconPlayerPlay],
+              ["web-page", "网页", IconWorld],
+              ["local-video", "本地视频", IconUpload],
+            ].map(([value, label, Icon]) => (
+              <button
+                aria-selected={sourceType === value}
+                className={sourceType === value ? "is-active" : ""}
+                disabled={!serviceOnline || busy}
+                key={value}
+                onClick={() => {
+                  setSourceType(value);
+                  setSourceValue("");
+                }}
+                role="tab"
+                type="button"
+              >
+                <Icon aria-hidden="true" />
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
+
+          <label className="ingestion-capture__input">
+            <span>{isDouyinSource ? "抖音链接或分享文案" : isWebSource ? "网页链接或分享文本" : "视频文件路径"}</span>
+            {isTextSource ? (
+              <textarea
+                disabled={!serviceOnline || busy}
+                maxLength="4000"
+                onChange={(event) => setSourceValue(event.target.value)}
+                placeholder={isDouyinSource ? "粘贴抖音分享文案或公开链接…" : "粘贴网页链接，或包含链接的平台分享文本…"}
+                rows="3"
+                value={sourceValue}
+              />
+            ) : (
+              <input
+                disabled={!serviceOnline || busy}
+                onChange={(event) => setSourceValue(event.target.value)}
+                placeholder="例如 D:\\Personal-AI\\Sources\\video.mp4"
+                type="text"
+                value={sourceValue}
+              />
+            )}
+          </label>
+
+          <div className="ingestion-capture__actions">
+            <button className="ingestion-capture__submit" disabled={!serviceOnline || busy || !sourceValue.trim()} type="submit">
+              <IconSend aria-hidden="true" />
+              <span>{isDouyinSource ? "开始采集" : isWebSource ? "采集网页" : "投递视频"}</span>
+            </button>
+            <span className="ingestion-capture__privacy">
+              {isDouyinSource ? "媒体只临时保存在本地 Run 目录" : isWebSource ? "只抓取公开页面，不使用登录态" : "只读取已批准的本地目录"}
+            </span>
+          </div>
+
+          <details className="ingestion-capture__extras">
+            <summary>
+              <span>补充入库信息</span>
+              <small>标签、收藏原因与处理选项</small>
+            </summary>
+            <div className="ingestion-capture__extras-grid">
+              <label>
+                <span>临时标签</span>
+                <input
+                  disabled={!serviceOnline || busy}
+                  onChange={(event) => setCaptureTags(event.target.value)}
+                  placeholder="多个标签用逗号分隔"
+                  type="text"
+                  value={captureTags}
+                />
+              </label>
+              <label>
+                <span>为什么收藏</span>
+                <input
+                  disabled={!serviceOnline || busy}
+                  maxLength="500"
+                  onChange={(event) => setCaptureReason(event.target.value)}
+                  placeholder="例如：补充当前知识库方案"
+                  type="text"
+                  value={captureReason}
+                />
+              </label>
+              {!isWebSource ? (
+                <label className="ingestion-vad">
+                  <input
+                    checked={useVad && vadAvailable}
+                    disabled={!serviceOnline || busy || !vadAvailable}
+                    onChange={(event) => setUseVad(event.target.checked)}
+                    title={!vadAvailable ? vadCapability?.reason : undefined}
+                    type="checkbox"
+                  />
+                  <span>{vadAvailable ? "转写时过滤静音" : "静音过滤暂不可用"}</span>
+                </label>
+              ) : null}
+            </div>
+          </details>
+        </form>
+
+        <aside className="ingestion-runtime-card">
+          <div className="ingestion-runtime-card__head">
+            <span className="eyebrow">本地处理流程</span>
+            <span className={`ingestion-service ingestion-service--${serviceOnline ? "online" : "offline"}`}>
+              <span />
+              {serviceOnline === null ? "连接中" : serviceOnline ? "服务在线" : "服务离线"}
+            </span>
+          </div>
+          <h2>本地入库流水线</h2>
+          <p>采集、AI 候选总结、审核、分类、归档都在你的本地工作台完成。</p>
+          <dl className="ingestion-runtime-card__facts">
+            <div><dt>处理方式</dt><dd>本地优先</dd></div>
+            <div><dt>归档门槛</dt><dd>人工确认</dd></div>
+            <div><dt>事实源</dt><dd>Markdown</dd></div>
+          </dl>
+          {error ? (
+            <div className="ingestion-runtime-card__error" role="alert">
+              <IconAlertTriangle aria-hidden="true" />
+              <span>{error}</span>
+              <button aria-label="关闭提示" onClick={() => setError("")} type="button"><IconX /></button>
+            </div>
+          ) : null}
+        </aside>
+      </section>
 
       <div className="ingestion-workspace">
         <aside className="ingestion-queue">
           <div className="ingestion-queue__head">
             <div>
-              <span className="eyebrow">QUEUE</span>
+              <span className="eyebrow">处理队列</span>
               <h2>处理队列</h2>
             </div>
             <span className="ingestion-queue__count">{jobs.length}</span>
@@ -579,7 +721,7 @@ export function IngestionPage() {
                   ["transcribe", isDocumentDetail ? "抓取" : "转写"],
                   ["summary", "AI 摘要"],
                   ["review", "审核"],
-                  ["publish", "发布"],
+                  ["publish", "归档"],
                 ].map(([key, label]) => (
                   <div className={`ingestion-flow__step is-${stepState(detail, key)}`} key={key}>
                     <span>{stepState(detail, key) === "done" ? <IconCheck /> : null}</span>
@@ -595,40 +737,58 @@ export function IngestionPage() {
               {["waiting_review", "succeeded"].includes(detail.status) && !detail.publication ? (
                 <section className="ingestion-summary">
                   <div className="ingestion-section-title">
-                    <span>AI SUMMARY CANDIDATE</span>
-                    <h3>先理解资料，再决定是否发布</h3>
+                    <span>AI 候选总结</span>
+                    <h3>AI 先总结，你审核后再归档</h3>
                   </div>
                   <p className="ingestion-summary__intro">
-                    Dashboard 不绑定任何 AI。先复制标准提示词给你选择的 AI，再把结果粘贴回来；完整正文始终保留。
+                    {summaryProvider === "manual"
+                      ? "当前使用人工模式：Workbench 不会调用任何模型。你可以复制标准提示词给任意 AI，或直接手工填写候选总结；结果仍需你审核后保存。"
+                      : "Workbench 会在你点击后调用受控 AI Provider 生成候选总结。结果只进入可编辑草稿，不会自动保存，也不会直接成为正式知识；完整正文始终保留。"}
                   </p>
                   <div className="ingestion-summary__actions">
-                    <button className="ingestion-action" disabled={busy} onClick={prepareSummaryPrompt} type="button">
-                      <IconCopy />{summaryPrompt ? "重新生成提示词" : "生成并复制提示词"}
-                    </button>
-                    {summaryPrompt ? (
-                      <button className="ingestion-action" disabled={busy} onClick={copySummaryPrompt} type="button">
-                        <IconCopy />再次复制
+                    {summaryProvider !== "manual" ? (
+                      <button className="ingestion-action ingestion-action--approve" disabled={busy} onClick={generateSummary} type="button">
+                        <IconSparkles />{generatingSummary ? "AI 正在总结…" : summaryDraft.trim() ? "重新生成 AI 总结" : "生成 AI 总结"}
                       </button>
-                    ) : null}
+                    ) : (
+                      <button className="ingestion-action ingestion-action--approve" disabled={busy} onClick={prepareSummaryPrompt} type="button">
+                        <IconCopy />准备人工总结提示词
+                      </button>
+                    )}
                     {summaryArtifactId ? <span className="ingestion-summary__saved"><IconCheck />候选摘要已保存</span> : null}
                   </div>
+                  {summaryCopyState === "generated" ? <p className="ingestion-summary__feedback">AI 候选总结已生成。请直接在下方修改，确认后再保存。</p> : null}
+                  {summaryProvenance ? (
+                    <p className="ingestion-summary__feedback">
+                      本次草稿：{summaryProvenance.provider} · {summaryProvenance.model === "default" ? "默认模型" : summaryProvenance.model}
+                      {summaryProvenance.promptVersion ? ` · ${summaryProvenance.promptVersion}` : ""}
+                    </p>
+                  ) : null}
                   {summaryCopyState === "copied" ? <p className="ingestion-summary__feedback">提示词已复制。可粘贴到任意 AI，生成后把结果放到下方。</p> : null}
                   {summaryCopyState === "manual" ? <p className="ingestion-summary__feedback">无法自动复制，请从提示词文本框中手动全选复制。</p> : null}
-                  {summaryPrompt ? (
-                    <details className="ingestion-summary__prompt">
-                      <summary>查看标准提示词</summary>
-                      <textarea aria-label="AI 候选摘要标准提示词" readOnly value={summaryPrompt} />
-                    </details>
-                  ) : null}
+                  <details className="ingestion-summary__prompt">
+                    <summary>备用方式：复制标准提示词给其他 AI</summary>
+                    <div className="ingestion-summary__actions">
+                      <button className="ingestion-action" disabled={busy} onClick={prepareSummaryPrompt} type="button">
+                        <IconCopy />{summaryPrompt ? "重新生成并复制提示词" : "生成并复制提示词"}
+                      </button>
+                      {summaryPrompt ? (
+                        <button className="ingestion-action" disabled={busy} onClick={copySummaryPrompt} type="button">
+                          <IconCopy />再次复制
+                        </button>
+                      ) : null}
+                    </div>
+                    {summaryPrompt ? <textarea aria-label="AI 候选摘要标准提示词" readOnly value={summaryPrompt} /> : null}
+                  </details>
                   <label className="ingestion-summary__editor">
-                    <span>粘贴或修改 AI 候选摘要</span>
+                    <span>审核并修改 AI 候选总结</span>
                     <textarea
                       aria-label="AI 候选摘要"
                       onChange={(event) => {
                         setSummaryDraft(event.target.value);
                         setSummaryCopyState((current) => current === "saved" ? "idle" : current);
                       }}
-                      placeholder={'必须依次包含：\n## AI 候选摘要\n## 核心要点\n## 建议标签\n## 可复用方向\n## 不确定内容'}
+                      placeholder={'必须依次包含：\n## AI 候选摘要\n## 核心要点\n## 建议标签\n## 可复用方向\n## 不确定内容\n## 建议领域\n## 建议内容类型\n## 建议用途'}
                       value={summaryDraft}
                     />
                   </label>
@@ -673,14 +833,93 @@ export function IngestionPage() {
                     <span>PUBLISH GATE</span>
                     <h3>审核已通过，尚未写入知识库</h3>
                   </div>
+                  {classificationRequired ? (
+                    <div className="ingestion-classification">
+                      <div className="ingestion-section-title">
+                        <span>CLASSIFICATION</span>
+                        <h3>{classificationConfirmed ? "分类已确认，可继续归档" : "确认这份资料应该如何归类"}</h3>
+                      </div>
+                      <div className="ingestion-classification__grid">
+                        <label>
+                          <span>领域</span>
+                          <select
+                            disabled={busy}
+                            onChange={(event) => setClassificationDraft((current) => ({ ...current, domain: event.target.value }))}
+                            value={classificationDraft.domain}
+                          >
+                            <option value="">请选择</option>
+                            {classificationOptions.domains.map((item) => <option key={item} value={item}>{item}</option>)}
+                          </select>
+                        </label>
+                        <label>
+                          <span>内容类型</span>
+                          <select
+                            disabled={busy}
+                            onChange={(event) => setClassificationDraft((current) => ({ ...current, content_kind: event.target.value }))}
+                            value={classificationDraft.content_kind}
+                          >
+                            <option value="">请选择</option>
+                            {classificationOptions.content_kinds.map((item) => <option key={item} value={item}>{item}</option>)}
+                          </select>
+                        </label>
+                        <label className="ingestion-classification__topics">
+                          <span>主题</span>
+                          <input
+                            disabled={busy}
+                            onChange={(event) => setClassificationDraft((current) => ({ ...current, topics: event.target.value }))}
+                            placeholder="多个主题用逗号分隔"
+                            type="text"
+                            value={classificationDraft.topics}
+                          />
+                        </label>
+                      </div>
+                      <div className="ingestion-classification__uses">
+                        <span>用途</span>
+                        <div>
+                          {classificationOptions.use_cases.map((item) => (
+                            <label key={item}>
+                              <input
+                                checked={classificationDraft.use_cases.includes(item)}
+                                disabled={busy}
+                                onChange={(event) => setClassificationDraft((current) => ({
+                                  ...current,
+                                  use_cases: event.target.checked
+                                    ? [...current.use_cases, item]
+                                    : current.use_cases.filter((value) => value !== item),
+                                }))}
+                                type="checkbox"
+                              />
+                              <span>{item}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="ingestion-summary__actions">
+                        <button
+                          className="ingestion-action ingestion-action--approve"
+                          disabled={busy || !classificationDraft.domain || !classificationDraft.content_kind}
+                          onClick={saveClassification}
+                          type="button"
+                        >
+                          <IconTags />{savingClassification ? "正在保存…" : classificationConfirmed ? "更新分类" : "确认分类"}
+                        </button>
+                        {classificationConfirmed ? <span className="ingestion-summary__saved"><IconCheck />归档分类已确认</span> : null}
+                      </div>
+                    </div>
+                  ) : null}
                   <dl>
                     <div><dt>目标位置</dt><dd>{detail.publication_preview?.relative_path || (detail.source_type === "web-page" ? "04-来源资料/网页" : "04-来源资料/视频")}</dd></div>
                     <div><dt>写入内容</dt><dd>{summaryArtifactId ? "候选摘要＋完整正文 Markdown" : isDocumentDetail ? "正文 Markdown，图片副本留在任务 Run" : "仅 Markdown，不复制原视频"}</dd></div>
                     <div><dt>知识状态</dt><dd>来源资料，不是正式知识</dd></div>
                   </dl>
                   {!confirmPublish ? (
-                    <button className="ingestion-action ingestion-action--publish" onClick={() => setConfirmPublish(true)} type="button">
-                      <IconUpload />发布为来源资料
+                    <button
+                      className="ingestion-action ingestion-action--publish"
+                      disabled={classificationRequired && !classificationConfirmed}
+                      onClick={() => setConfirmPublish(true)}
+                      type="button"
+                    >
+                      <IconUpload />归档到资料中心
                     </button>
                   ) : (
                     <div className="ingestion-confirm">
@@ -689,17 +928,18 @@ export function IngestionPage() {
                         <strong>确认写入以上路径？</strong>
                         <span>不会覆盖已有文件；重复点击不会创建副本。</span>
                       </div>
-                      <button disabled={busy} onClick={() => runAction(() => publishIngestionJob(detail.id))} type="button">确认发布 Markdown</button>
+                      <button disabled={busy} onClick={() => runAction(() => publishIngestionJob(detail.id))} type="button">确认归档来源资料</button>
                       <button disabled={busy} onClick={() => setConfirmPublish(false)} type="button">取消</button>
                     </div>
                   )}
+                  {classificationRequired && !classificationConfirmed ? <p className="ingestion-summary__feedback">请先确认分类，再归档到资料中心。</p> : null}
                 </section>
               ) : null}
 
               {detail.publication ? (
                 <section className="ingestion-published">
                   <IconCircleCheck aria-hidden="true" />
-                  <div><strong>已发布为来源资料</strong><span>{detail.publication.relative_path}</span></div>
+                  <div><strong>已归档到资料中心</strong><span>{detail.publication.relative_path}</span></div>
                 </section>
               ) : null}
 
@@ -716,7 +956,7 @@ export function IngestionPage() {
                         ? `已释放约 ${(detail.media_retention.source_size / 1024 / 1024).toFixed(1)} MB；转写、摘要、字幕、哈希和审核记录仍保留。`
                         : detail.media_retention.delete_after
                           ? `保留期限至 ${formatCompactDate(detail.media_retention.delete_after)}；到期后仍需手动确认清理。`
-                          : "这里只管理抖音源视频，不会删除图文图片或已经发布的 Markdown。"}
+                          : "这里只管理抖音源视频，不会删除图文图片或已经归档的 Markdown。"}
                     </span>
                   </div>
                   {detail.media_retention.state !== "cleaned" ? (
@@ -823,7 +1063,8 @@ export function IngestionPage() {
           ) : (
             <div className="ingestion-detail__empty">
               <IconFileText aria-hidden="true" />
-              <strong>选择一个任务查看处理详情</strong>
+              <strong>{jobs.length ? "选择一个任务查看处理详情" : "从上方添加第一条来源"}</strong>
+              <span>{jobs.length ? "转写、AI 总结、审核、分类和归档记录都会集中显示在这里。" : "任务创建后，这里会显示完整处理进度和审核步骤。"}</span>
             </div>
           )}
         </section>

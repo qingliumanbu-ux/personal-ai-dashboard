@@ -184,3 +184,32 @@ test("rejects a reading-state directory that escapes the Vault through a directo
   );
   assert.deepEqual(await readdir(outside), []);
 });
+
+test("personal-ai-vault-v1 reading state is stored under 04-来源资料 instead of legacy 10_raw", async (t) => {
+  const vaultRoot = await mkdtemp(path.join(os.tmpdir(), "workbench-material-state-formal-"));
+  t.after(() => rm(vaultRoot, { recursive: true, force: true }));
+  await mkdir(path.join(vaultRoot, "04-来源资料", "文章"), { recursive: true });
+  const repository = createMaterialReadingStateRepository({
+    vaultRoot,
+    rawRoot: "04-来源资料",
+    now: () => new Date("2026-08-19T00:00:00.000Z"),
+  });
+
+  await repository.add({
+    id: "formal-material",
+    path: "04-来源资料/文章/来源.md",
+    contentHash: "formal-hash",
+    contentFingerprint: "formal-fingerprint",
+  });
+
+  assert.equal(
+    repository.storePath,
+    "04-来源资料/my-thoughts/reading-notes/.workbench-material-reading-state.json",
+  );
+  const persisted = JSON.parse(await readFile(path.join(vaultRoot, repository.storePath), "utf8"));
+  assert.equal(persisted.items[0].relativePath, "04-来源资料/文章/来源.md");
+  await assert.rejects(
+    repository.add({ id: "legacy", path: "10_raw/articles/legacy.md" }),
+    (error) => error instanceof MaterialReadingStateError && error.code === "INVALID_MATERIAL_PATH",
+  );
+});

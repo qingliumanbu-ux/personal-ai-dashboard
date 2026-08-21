@@ -23,15 +23,19 @@ const EXCLUDED_DIRECTORIES = new Set([
 // These private workflow surfaces are intentionally outside the public build.
 // Excluding them at scan time also keeps their files out of global search and
 // recent-item feeds when a user connects a larger Vault.
-const PUBLIC_HIDDEN_PATH_PREFIXES = [
-  "Brainstorm",
-  "90_runs",
-  "30_self_media/public-account",
-];
+function publicHiddenPathPrefixes(layout) {
+  const runsRoot = layout?.root?.("runs");
+  const selfMediaRoot = layout?.root?.("selfMedia");
+  return [
+    "Brainstorm",
+    runsRoot,
+    selfMediaRoot ? `${selfMediaRoot}/public-account` : null,
+  ].filter(Boolean);
+}
 
-function isPublicHiddenPath(relativePath) {
+function isPublicHiddenPath(relativePath, prefixes) {
   const normalized = toPosixPath(relativePath);
-  return PUBLIC_HIDDEN_PATH_PREFIXES.some(
+  return prefixes.some(
     (prefix) => normalized === prefix || normalized.startsWith(`${prefix}/`),
   );
 }
@@ -498,8 +502,9 @@ function makeError(relativePath, error, fallbackCode = "READ_FAILED") {
   };
 }
 
-async function collectFiles(vaultRoot, errors) {
+async function collectFiles(vaultRoot, errors, layout) {
   const files = [];
+  const hiddenPrefixes = publicHiddenPathPrefixes(layout);
 
   async function walk(absoluteDirectory) {
     let entries;
@@ -523,7 +528,7 @@ async function collectFiles(vaultRoot, errors) {
       const absolutePath = path.join(absoluteDirectory, entry.name);
       const relativePath = safeRelative(vaultRoot, absolutePath);
       if (!relativePath) continue;
-      if (isPublicHiddenPath(relativePath)) continue;
+      if (isPublicHiddenPath(relativePath, hiddenPrefixes)) continue;
 
       if (entry.isSymbolicLink()) {
         errors.push({ path: relativePath, code: "SYMLINK_SKIPPED" });
@@ -618,6 +623,19 @@ async function buildDocument(file, vaultRoot, errors, layout) {
       : frontmatter.tags
         ? [String(frontmatter.tags)]
         : [],
+    domain: frontmatter.domain ? String(frontmatter.domain) : null,
+    topics: Array.isArray(frontmatter.topics)
+      ? frontmatter.topics.filter((item) => item != null).map(String)
+      : frontmatter.topics
+        ? [String(frontmatter.topics)]
+        : [],
+    contentKind: frontmatter.content_kind ? String(frontmatter.content_kind) : null,
+    useCases: Array.isArray(frontmatter.use_cases)
+      ? frontmatter.use_cases.filter((item) => item != null).map(String)
+      : frontmatter.use_cases
+        ? [String(frontmatter.use_cases)]
+        : [],
+    sourceType: frontmatter.source_type ? String(frontmatter.source_type) : null,
     createdAt,
     updatedAt,
     modifiedAt,
@@ -673,9 +691,10 @@ function buildLinkLookup(documents) {
   return { exact, basenames };
 }
 
-function resolveWikiLinks(documents) {
+function resolveWikiLinks(documents, layout) {
   const lookup = buildLinkLookup(documents);
   const documentById = new Map(documents.map((document) => [document.id, document]));
+  const wikiRoot = layout.root("wiki");
 
   for (const document of documents) {
     if (document.extension !== "md") continue;
@@ -690,8 +709,12 @@ function resolveWikiLinks(documents) {
         path.posix.normalize(rawTarget),
       ];
 
-      if (document.path.startsWith("wiki/") && !rawTarget.startsWith("wiki/")) {
-        candidates.push(path.posix.normalize(path.posix.join("wiki", rawTarget)));
+      if (
+        wikiRoot &&
+        document.path.startsWith(`${wikiRoot}/`) &&
+        !rawTarget.startsWith(`${wikiRoot}/`)
+      ) {
+        candidates.push(path.posix.normalize(path.posix.join(wikiRoot, rawTarget)));
       }
 
       let resolved = null;
@@ -2625,6 +2648,11 @@ function publicDocument(document) {
     type: document.type,
     status: document.status,
     tags: document.tags,
+    domain: document.domain,
+    topics: document.topics,
+    contentKind: document.contentKind,
+    useCases: document.useCases,
+    sourceType: document.sourceType,
     createdAt: document.createdAt,
     updatedAt: document.updatedAt,
     modifiedAt: document.modifiedAt,
@@ -2668,7 +2696,7 @@ export async function buildVaultIndex(vaultRoot, { layoutId = "dashboard-v1" } =
   }
 
   const errors = [];
-  const files = await collectFiles(resolvedRoot, errors);
+  const files = await collectFiles(resolvedRoot, errors, layout);
   const documents = [];
 
   for (const file of files) {
@@ -2681,7 +2709,7 @@ export async function buildVaultIndex(vaultRoot, { layoutId = "dashboard-v1" } =
   }
 
   documents.sort((a, b) => a.path.localeCompare(b.path, "zh-CN"));
-  const documentMap = resolveWikiLinks(documents);
+  const documentMap = resolveWikiLinks(documents, layout);
   const wikiPages = documents.filter(
     (document) =>
       document.layer === "wiki" &&
@@ -2870,6 +2898,11 @@ function documentMatchesFilters(document, filters) {
   if (!matchesOne(document.section, filterValues(filters.section))) return false;
   if (!matchesOne(document.type, filterValues(filters.type))) return false;
   if (!matchesOne(document.status, filterValues(filters.status))) return false;
+  if (!matchesOne(document.domain, filterValues(filters.domain))) return false;
+  if (!matchesOne(document.topics, filterValues(filters.topics))) return false;
+  if (!matchesOne(document.contentKind, filterValues(filters.contentKind))) return false;
+  if (!matchesOne(document.useCases, filterValues(filters.useCases))) return false;
+  if (!matchesOne(document.sourceType, filterValues(filters.sourceType))) return false;
   if (!matchesOne(document.extension, filterValues(filters.extension))) {
     return false;
   }
@@ -2943,13 +2976,23 @@ export function searchIndex(index, query = "", filters = {}) {
     const title = document.title.toLocaleLowerCase("zh-CN");
     const pathText = document.path.toLocaleLowerCase("zh-CN");
     const tagText = document.tags.join(" ").toLocaleLowerCase("zh-CN");
+    const classificationText = [
+      document.domain,
+      ...document.topics,
+      document.contentKind,
+      ...document.useCases,
+      document.sourceType,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLocaleLowerCase("zh-CN");
     const headingText = document.headings
       .map((heading) => heading.title)
       .join(" ")
       .toLocaleLowerCase("zh-CN");
     const contentText = String(document[INTERNAL_CONTENT] || "")
       .toLocaleLowerCase("zh-CN");
-    const haystack = `${title}\n${pathText}\n${tagText}\n${headingText}\n${contentText}`;
+    const haystack = `${title}\n${pathText}\n${tagText}\n${classificationText}\n${headingText}\n${contentText}`;
 
     if (terms.length > 0 && !terms.every((term) => haystack.includes(term))) {
       continue;
@@ -2961,6 +3004,7 @@ export function searchIndex(index, query = "", filters = {}) {
     else if (title.startsWith(normalizedQuery)) score += 80;
     else if (title.includes(normalizedQuery)) score += 60;
     if (tagText.includes(normalizedQuery)) score += 30;
+    if (classificationText.includes(normalizedQuery)) score += 28;
     if (headingText.includes(normalizedQuery)) score += 20;
     if (pathText.includes(normalizedQuery)) score += 15;
     if (contentText.includes(normalizedQuery)) score += 10;
@@ -2975,6 +3019,11 @@ export function searchIndex(index, query = "", filters = {}) {
       type: document.type,
       status: document.status,
       tags: document.tags,
+      domain: document.domain,
+      topics: document.topics,
+      contentKind: document.contentKind,
+      useCases: document.useCases,
+      sourceType: document.sourceType,
       updatedAt: document.updatedAt,
       excerpt: document.excerpt,
       snippet: makeSnippet(

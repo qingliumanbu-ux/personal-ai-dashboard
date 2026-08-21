@@ -64,6 +64,20 @@ export function loadOverview() {
   return withFallback(() => request("/api/overview"), fallbackOverview);
 }
 
+export function loadKnowledgeWork() {
+  return withFallback(
+    () => request("/api/knowledge-work"),
+    { schemaVersion: 1, generatedAt: null, total: 0, items: [] },
+  );
+}
+
+export function loadKnowledgeWorkFocus(workItemId) {
+  return withFallback(
+    () => request(`/api/knowledge-work/focus/${encodeURIComponent(workItemId)}`),
+    null,
+  );
+}
+
 let dailyHotLoader = null;
 let dailyHotStrategyKey = null;
 
@@ -163,11 +177,47 @@ const emptyMaterialsHome = {
   queue: [],
   queuePreview: [],
   recent: [],
+  items: [],
+  classification: {
+    classified: 0,
+    unclassified: 0,
+    coveragePct: 100,
+    domains: [],
+    topics: [],
+    contentKinds: [],
+    useCases: [],
+    sourceTypes: [],
+    audit: [],
+  },
   total: 0,
 };
 
 export function loadMaterialsHome() {
   return withFallback(() => request("/api/materials"), emptyMaterialsHome);
+}
+
+export function loadMaterialReviewBackfillPrompt(documentId) {
+  return request("/api/material-review-backfill/prompt", {
+    method: "POST",
+    body: JSON.stringify({ documentId }),
+    timeout: 30_000,
+  });
+}
+
+export function validateMaterialReviewBackfillSummary(content) {
+  return request("/api/material-review-backfill/validate-summary", {
+    method: "POST",
+    body: JSON.stringify({ content }),
+    timeout: 30_000,
+  });
+}
+
+export function saveMaterialReviewBackfill(documentId, payload) {
+  return request("/api/material-review-backfill/save", {
+    method: "POST",
+    body: JSON.stringify({ documentId, ...payload }),
+    timeout: 30_000,
+  });
 }
 
 export function loadBooks() {
@@ -306,16 +356,20 @@ export function saveReaderExplanationToNote(analysisId, payload) {
   );
 }
 
-export function startWikiIngest(documentId) {
+export function startWikiIngest(documentId, p2Admission) {
   return request("/api/wiki-ingest", {
     method: "POST",
-    body: JSON.stringify({ documentId }),
+    body: JSON.stringify({ documentId, p2Admission }),
     timeout: 30_000,
   });
 }
 
 export function loadWikiIngestJob(jobId) {
   return request(`/api/wiki-ingest/jobs/${encodeURIComponent(jobId)}`);
+}
+
+export function loadWikiIngestJobs() {
+  return request("/api/wiki-ingest/jobs");
 }
 
 export function loadWikiIngestRecovery(documentId) {
@@ -326,6 +380,21 @@ export function sendWikiIngestMessage(jobId, message, kind = "query") {
   return request(`/api/wiki-ingest/jobs/${encodeURIComponent(jobId)}/message`, {
     method: "POST",
     body: JSON.stringify({ message, kind }),
+    timeout: 30_000,
+  });
+}
+
+export function saveManualWikiIngestPlan(jobId, plan) {
+  return request(`/api/wiki-ingest/jobs/${encodeURIComponent(jobId)}/manual-plan`, {
+    method: "POST",
+    body: JSON.stringify({ plan }),
+    timeout: 30_000,
+  });
+}
+
+export function executeManualWikiIngest(jobId) {
+  return request(`/api/wiki-ingest/jobs/${encodeURIComponent(jobId)}/manual-write`, {
+    method: "POST",
     timeout: 30_000,
   });
 }
@@ -472,6 +541,39 @@ export function getRuntimeStatus() {
       },
     },
   );
+}
+
+export function loadSystemHealth() {
+  return withFallback(
+    () => request("/api/system-health"),
+    null,
+  );
+}
+
+export function loadAiProviderSettings() {
+  return request("/api/ai-provider-settings");
+}
+
+export function saveAiProviderSettings(settings) {
+  return request("/api/ai-provider-settings", {
+    method: "PUT",
+    body: JSON.stringify(settings),
+  });
+}
+
+export function runSystemDiagnostics() {
+  return request("/api/diagnostics");
+}
+
+export function previewMaintenance(action) {
+  return request(`/api/maintenance/preview?action=${encodeURIComponent(action)}`);
+}
+
+export function executeMaintenance(action) {
+  return request("/api/maintenance/execute", {
+    method: "POST",
+    body: JSON.stringify({ action, confirmed: true }),
+  });
 }
 
 export function startWorkflow(payload) {

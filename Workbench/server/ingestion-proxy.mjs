@@ -4,7 +4,7 @@ export function isIngestionProxyPath(pathname) {
   return pathname === "/api/ingestion" || pathname.startsWith("/api/ingestion/");
 }
 
-export function createIngestionProxyConfig(target = "http://127.0.0.1:8765") {
+export function createIngestionProxyConfig(target = "http://127.0.0.1:8766") {
   const parsed = new URL(target);
   if (parsed.protocol !== "http:" || !LOOPBACK_HOSTS.has(parsed.hostname)) {
     throw new Error("Ingestion proxy target must be a loopback HTTP service");

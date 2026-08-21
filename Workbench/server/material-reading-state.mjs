@@ -20,7 +20,9 @@ const STORE_VERSION = 1;
 const MAX_STORE_BYTES = 2 * 1024 * 1024;
 const MAX_ITEMS = 5_000;
 const MAX_PATH_LENGTH = 768;
-const STORE_DIRECTORY = path.posix.dirname(MATERIAL_READING_STATE_PATH);
+function materialReadingStatePath(rawRoot) {
+  return `${rawRoot}/my-thoughts/reading-notes/.workbench-material-reading-state.json`;
+}
 
 export class MaterialReadingStateError extends Error {
   constructor(code, message, details = undefined) {
@@ -35,7 +37,7 @@ function fail(code, message, details) {
   throw new MaterialReadingStateError(code, message, details);
 }
 
-function normalizePath(value) {
+function normalizePath(value, rawRoot) {
   if (typeof value !== "string") fail("INVALID_MATERIAL_PATH", "素材路径必须是字符串。");
   const result = value.normalize("NFC").trim();
   if (!result || result.length > MAX_PATH_LENGTH) {
@@ -46,9 +48,9 @@ function normalizePath(value) {
     result.includes("\\") ||
     result.includes("\0") ||
     result.split("/").some((segment) => !segment || segment === "." || segment === "..") ||
-    !result.startsWith("10_raw/")
+    !result.startsWith(`${rawRoot}/`)
   ) {
-    fail("INVALID_MATERIAL_PATH", "待看状态只接受 10_raw 下的 Vault 相对路径。");
+    fail("INVALID_MATERIAL_PATH", `待看状态只接受 ${rawRoot} 下的 Vault 相对路径。`);
   }
   return result;
 }
@@ -72,7 +74,7 @@ function emptyStore() {
   return { version: STORE_VERSION, updatedAt: null, items: [] };
 }
 
-async function ensureSafeStorageDirectory(vaultRoot) {
+async function ensureSafeStorageDirectory(vaultRoot, storeDirectory) {
   let realVaultRoot;
   try {
     realVaultRoot = await realpath(path.resolve(vaultRoot));
@@ -83,7 +85,7 @@ async function ensureSafeStorageDirectory(vaultRoot) {
   if (!rootDetails.isDirectory()) fail("INVALID_VAULT", "Vault 不是目录。");
 
   let parent = realVaultRoot;
-  for (const segment of STORE_DIRECTORY.split("/")) {
+  for (const segment of storeDirectory.split("/")) {
     const candidate = path.join(parent, segment);
     let details;
     try {
@@ -108,9 +110,9 @@ async function ensureSafeStorageDirectory(vaultRoot) {
   return parent;
 }
 
-async function safeStorePath(vaultRoot) {
-  const directory = await ensureSafeStorageDirectory(vaultRoot);
-  const targetPath = path.join(directory, path.posix.basename(MATERIAL_READING_STATE_PATH));
+async function safeStorePath(vaultRoot, storePath) {
+  const directory = await ensureSafeStorageDirectory(vaultRoot, path.posix.dirname(storePath));
+  const targetPath = path.join(directory, path.posix.basename(storePath));
   try {
     const details = await lstat(targetPath);
     if (details.isSymbolicLink() || !details.isFile()) {
@@ -129,7 +131,7 @@ function clone(value) {
   return structuredClone(value);
 }
 
-function validatePersistedStore(value) {
+function validatePersistedStore(value, rawRoot) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     fail("MATERIAL_READING_STATE_CORRUPT", "素材待看状态文件格式无效。");
   }
@@ -143,7 +145,7 @@ function validatePersistedStore(value) {
   const seenPaths = new Set();
   const items = value.items.map((item) => {
     const documentId = normalizeId(item.documentId);
-    const relativePath = normalizePath(item.relativePath);
+    const relativePath = normalizePath(item.relativePath, rawRoot);
     if (seenIds.has(documentId) || seenPaths.has(relativePath)) {
       fail("MATERIAL_READING_STATE_CORRUPT", "素材待看状态存在重复记录。");
     }
@@ -168,17 +170,19 @@ function validatePersistedStore(value) {
 
 export function createMaterialReadingStateRepository({
   vaultRoot = DEFAULT_VAULT_ROOT,
+  rawRoot = "10_raw",
   now = () => new Date(),
 } = {}) {
   const resolvedRoot = path.resolve(vaultRoot);
-  const absoluteStorePath = path.resolve(resolvedRoot, MATERIAL_READING_STATE_PATH);
+  const storePath = materialReadingStatePath(rawRoot);
+  const absoluteStorePath = path.resolve(resolvedRoot, storePath);
   if (!isPathInside(resolvedRoot, absoluteStorePath)) {
     fail("UNSAFE_MATERIAL_READING_STATE", "素材待看状态路径越出了 Vault。");
   }
   let mutationQueue = Promise.resolve();
 
   async function readStore() {
-    const targetPath = await safeStorePath(resolvedRoot);
+    const targetPath = await safeStorePath(resolvedRoot, storePath);
     let details;
     try {
       details = await stat(targetPath);
@@ -197,12 +201,12 @@ export function createMaterialReadingStateRepository({
         cause: error?.code || error?.message,
       });
     }
-    return validatePersistedStore(parsed);
+    return validatePersistedStore(parsed, rawRoot);
   }
 
   async function writeStore(store) {
-    const normalized = validatePersistedStore(store);
-    const targetPath = await safeStorePath(resolvedRoot);
+    const normalized = validatePersistedStore(store, rawRoot);
+    const targetPath = await safeStorePath(resolvedRoot, storePath);
     const temporaryPath = `${targetPath}.${randomUUID()}.tmp`;
     const content = `${JSON.stringify(normalized, null, 2)}\n`;
     if (Buffer.byteLength(content, "utf8") > MAX_STORE_BYTES) {
@@ -210,7 +214,7 @@ export function createMaterialReadingStateRepository({
     }
     try {
       await writeFile(temporaryPath, content, { encoding: "utf8", flag: "wx", mode: 0o600 });
-      await safeStorePath(resolvedRoot);
+      await safeStorePath(resolvedRoot, storePath);
       await rename(temporaryPath, targetPath);
     } finally {
       await unlink(temporaryPath).catch(() => {});
@@ -231,7 +235,7 @@ export function createMaterialReadingStateRepository({
   function add(document) {
     return mutate(async () => {
       const documentId = normalizeId(document?.id ?? document?.documentId);
-      const relativePath = normalizePath(document?.relativePath ?? document?.path);
+      const relativePath = normalizePath(document?.relativePath ?? document?.path, rawRoot);
       const timestamp = now().toISOString();
       const store = await readStore();
       const previous = store.items.find(
@@ -263,7 +267,7 @@ export function createMaterialReadingStateRepository({
   function remove({ documentId = null, relativePath = null } = {}) {
     return mutate(async () => {
       const safeId = documentId == null ? null : normalizeId(documentId);
-      const safePath = relativePath == null ? null : normalizePath(relativePath);
+      const safePath = relativePath == null ? null : normalizePath(relativePath, rawRoot);
       if (!safeId && !safePath) {
         fail("INVALID_MATERIAL_DOCUMENT", "移出待看需要文档 ID 或路径。");
       }
@@ -278,5 +282,5 @@ export function createMaterialReadingStateRepository({
     });
   }
 
-  return Object.freeze({ list, add, remove });
+  return Object.freeze({ list, add, remove, storePath });
 }

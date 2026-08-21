@@ -1,0 +1,109 @@
+/* Personal AI Studio V5 · semantic visual tokens
+   New work surfaces should consume these tokens instead of adding raw page-specific values. */
+
+:root {
+  --ui-font-display: "Space Grotesk", "Noto Sans SC", system-ui, -apple-system, sans-serif;
+  --ui-font-body: "Noto Sans SC", system-ui, -apple-system, sans-serif;
+
+  --ui-canvas: #f5f5f3;
+  --ui-surface: #ffffff;
+  --ui-surface-muted: #f8f8f6;
+  --ui-surface-strong: #eeeeeb;
+  --ui-sidebar: #18181b;
+  --ui-sidebar-hover: #242428;
+  --ui-sidebar-active: #2b2b30;
+
+  --ui-text: #1b1b1f;
+  --ui-text-secondary: #626269;
+  --ui-text-tertiary: #8d8d95;
+  --ui-text-inverse: #f7f7f8;
+
+  --ui-border: #e1e1dd;
+  --ui-border-strong: #d1d1cc;
+  --ui-accent: #7258f4;
+  --ui-accent-strong: #5f46da;
+  --ui-accent-muted: #f0edff;
+  --ui-success: #27875a;
+  --ui-warning: #b66b1f;
+  --ui-danger: #c44b4b;
+
+  --ui-radius-xs: 4px;
+  --ui-radius-sm: 6px;
+  --ui-radius-md: 8px;
+  --ui-radius-lg: 10px;
+
+  --ui-font-caption: 10px;
+  --ui-font-meta: 11.5px;
+  --ui-font-small: 12px;
+  --ui-font-base: 13.5px;
+  --ui-font-medium: 15px;
+  --ui-font-section: 17px;
+  --ui-font-title: 28px;
+
+  --ui-space-1: 4px;
+  --ui-space-2: 8px;
+  --ui-space-3: 12px;
+  --ui-space-4: 16px;
+  --ui-space-5: 20px;
+  --ui-space-6: 24px;
+  --ui-space-8: 32px;
+
+  /* Bridge existing components onto the V5 semantic palette. */
+  --paper: var(--ui-canvas);
+  --surface: var(--ui-surface);
+  --surface-sunken: var(--ui-surface-strong);
+  --ink: var(--ui-text);
+  --ink-soft: var(--ui-text-secondary);
+  --ink-faint: var(--ui-text-tertiary);
+  --line: var(--ui-border);
+  --line-strong: var(--ui-border-strong);
+  --accent: var(--ui-accent);
+  --accent-strong: var(--ui-accent-strong);
+  --accent-wash: var(--ui-accent-muted);
+  --r-sm: var(--ui-radius-sm);
+  --r-md: var(--ui-radius-md);
+  --r-lg: var(--ui-radius-lg);
+}
+
+body {
+  font-family: var(--ui-font-body);
+  font-size: var(--ui-font-base);
+}
+
+.page-header__title,
+.panel__title,
+.materials-section__head h2,
+.collection-index__head h2,
+.studio-dashboard h1,
+.studio-dashboard h2 {
+  font-family: var(--ui-font-display);
+}
+
+.page-header__title {
+  font-size: clamp(24px, 2.3vw, var(--ui-font-title));
+  font-weight: 650;
+  letter-spacing: -0.035em;
+}
+
+.page-header__description {
+  color: var(--ui-text-secondary);
+  font-size: var(--ui-font-base);
+  line-height: 1.65;
+}
+
+.eyebrow {
+  color: var(--ui-text-tertiary);
+  font-size: var(--ui-font-caption);
+  font-weight: 500;
+  letter-spacing: 0.12em;
+}
+
+@media (max-width: 680px) {
+  body {
+    font-size: 16px;
+  }
+
+  .page-header__description {
+    font-size: 14px;
+  }
+}

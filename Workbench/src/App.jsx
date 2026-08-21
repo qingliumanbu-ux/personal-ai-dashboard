@@ -4,15 +4,22 @@ import { AppShell } from "./components/AppShell";
 import { DocumentDrawer } from "./components/DocumentDrawer";
 import { SearchPalette } from "./components/SearchPalette";
 import { CollectionPage } from "./pages/CollectionPage";
+import { CommandCenterPage } from "./pages/CommandCenterPage";
 import { DouyinPage } from "./pages/DouyinPage";
 import { DailyHotPage } from "./pages/DailyHotPage";
-import { GraphPage } from "./pages/GraphPage";
+import { DailyKnowledgeReviewPage } from "./pages/DailyKnowledgeReviewPage";
+import { DesignLabPage } from "./pages/DesignLabPage";
+import { FormalGraphPage } from "./pages/FormalGraphPage";
+import { FocusWorkspacePage } from "./pages/FocusWorkspacePage";
+import { FocusLandingPage } from "./pages/FocusLandingPage";
 import { IngestionPage } from "./pages/IngestionPage";
 import { MaterialsPage } from "./pages/MaterialsPage";
 import { BooksPage } from "./pages/BooksPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { SystemPage } from "./pages/SystemPage";
+import { TomorrowPlanPage } from "./pages/TomorrowPlanPage";
 import { TopicsPage } from "./pages/TopicsPage";
+import { WorkRulesPage } from "./pages/WorkRulesPage";
 import { SocialInsightsPage, SocialTrendDetailPage } from "./pages/SocialInsightsPage";
 import { useVaultSync } from "./hooks/useVaultSync";
 
@@ -70,20 +77,27 @@ export function App() {
     [navigate, openDocument],
   );
 
+  if (location.pathname === "/design-lab") {
+    return <DesignLabPage />;
+  }
+
   return (
     <>
       <AppShell onOpenSearch={appContext.openSearch} sync={vaultSync}>
         <Routes key={routeRevision}>
-          <Route path="/" element={<OverviewPage onOpenDocument={openDocument} />} />
-          <Route path="/graph" element={<GraphPage onOpenDocument={openDocument} />} />
+          <Route path="/" element={<CommandCenterPage onOpenDocument={openDocument} />} />
+          <Route path="/today" element={<OverviewPage onOpenDocument={openDocument} />} />
+          <Route path="/focus" element={<FocusLandingPage />} />
+          <Route path="/focus/:workItemId" element={<FocusWorkspacePage onOpenDocument={openDocument} />} />
+          <Route path="/graph" element={<FormalGraphPage onOpenDocument={openDocument} />} />
           <Route
             path="/wiki"
             element={
               <CollectionPage
                 kind="wiki"
                 eyebrow="KNOWLEDGE LAYER"
-                title="Wiki 层"
-                description="结构化知识：来源拆解、概念、框架、诊断与待验证问题。星图的线性视图。"
+                title="知识库"
+                description="从来源资料中提炼出的概念、方法、框架、案例与待验证判断。"
                 onOpenDocument={openDocument}
               />
             }
@@ -95,6 +109,9 @@ export function App() {
           <Route path="/books" element={<BooksPage onOpenDocument={openDocument} />} />
           <Route path="/books/:bookId" element={<BooksPage onOpenDocument={openDocument} />} />
           <Route path="/daily-hot" element={<DailyHotPage />} />
+          <Route path="/review" element={<DailyKnowledgeReviewPage onOpenDocument={openDocument} />} />
+          <Route path="/tomorrow" element={<TomorrowPlanPage onOpenDocument={openDocument} />} />
+          <Route path="/rules" element={<WorkRulesPage />} />
           {localWorkbench ? (
             <Route path="/ingestion" element={<IngestionPage />} />
           ) : null}

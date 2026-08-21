@@ -1,0 +1,1335 @@
+/* Personal AI Studio V5 · core work surfaces
+   Evidence Console / Knowledge Index / Spatial Graph */
+
+.page--materials,
+.page--collection,
+.graph-page-shell {
+  position: relative;
+  isolation: isolate;
+}
+
+.page--materials::before,
+.page--collection::before,
+.graph-page-shell::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: -38px;
+  right: -2vw;
+  width: min(680px, 58vw);
+  height: 260px;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 64% 28%, rgba(114, 88, 244, 0.10), transparent 31%),
+    radial-gradient(circle at 90% 18%, rgba(54, 132, 255, 0.055), transparent 27%);
+  filter: blur(18px);
+}
+
+.page--materials > .page-header,
+.page--collection > .page-header,
+.graph-page-shell > .page-header {
+  position: relative;
+  padding: 4px 2px 16px;
+  border-bottom: 1px solid rgba(207, 207, 202, 0.76);
+}
+
+.page--materials > .page-header::after,
+.page--collection > .page-header::after,
+.graph-page-shell > .page-header::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  width: min(240px, 24vw);
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(114, 88, 244, 0.72));
+  box-shadow: 0 0 14px rgba(114, 88, 244, 0.18);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Evidence Console                                                           */
+/* -------------------------------------------------------------------------- */
+
+.materials-index-status {
+  display: grid;
+  grid-template-columns: 1.35fr repeat(3, minmax(120px, 0.65fr));
+  overflow: hidden;
+  margin: 14px 0;
+  border: 1px solid #2d2d37;
+  border-radius: var(--ui-radius-md);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(117, 91, 255, 0.16), transparent 26%),
+    linear-gradient(120deg, #17171d, #1a1a22 58%, #151821);
+  box-shadow: 0 18px 54px rgba(23, 20, 41, 0.08);
+}
+
+.materials-index-status > div {
+  position: relative;
+  min-width: 0;
+  padding: 13px 15px 12px;
+  border-right: 1px solid #2d2d36;
+}
+
+.materials-index-status > div:last-child {
+  border-right: 0;
+}
+
+.materials-index-status > div::after {
+  content: "";
+  position: absolute;
+  right: 12px;
+  bottom: 0;
+  left: 12px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(132, 112, 255, 0.20), transparent);
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.materials-index-status > div:hover::after {
+  opacity: 1;
+}
+
+.materials-index-status span,
+.materials-index-status small {
+  display: block;
+}
+
+.materials-index-status span {
+  color: #777783;
+  font-size: 10px;
+  letter-spacing: 0.11em;
+}
+
+.materials-index-status strong {
+  display: block;
+  margin-top: 5px;
+  color: #f5f5f7;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+}
+
+.materials-index-status small {
+  margin-top: 1px;
+  color: #94949e;
+  font-size: 11px;
+}
+
+.materials-index-status .is-attention strong {
+  color: #c8baff;
+  text-shadow: 0 0 22px rgba(134, 104, 255, 0.28);
+}
+
+.page--materials .materials-section--classification {
+  grid-template-columns: 232px minmax(0, 1fr);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  box-shadow: 0 18px 54px rgba(34, 30, 64, 0.04);
+}
+
+.page--materials .materials-section--classification > .materials-section__head {
+  min-height: 50px;
+  background: rgba(250, 250, 248, 0.94);
+  backdrop-filter: blur(14px);
+}
+
+.page--materials .materials-facets {
+  position: relative;
+  gap: 18px;
+  padding: 16px 12px 18px;
+  border-right-color: #303039;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(113, 87, 244, 0.13), transparent 25%),
+    linear-gradient(180deg, #1a1a20, #18181e 58%, #16161b);
+}
+
+.page--materials .materials-facets::before {
+  content: "EVIDENCE RAIL";
+  display: block;
+  margin: -3px 3px 1px;
+  color: #666672;
+  font: 10px var(--font-mono);
+  letter-spacing: 0.13em;
+}
+
+.page--materials .materials-facet-group > strong {
+  color: #70707a;
+  font-size: 10px;
+}
+
+.page--materials .materials-facet-group > div {
+  display: grid;
+  gap: 3px;
+}
+
+.page--materials .materials-facet-group button {
+  display: flex;
+  width: 100%;
+  min-height: 29px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 7px 5px 9px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: #a5a5ae;
+  font-size: 11.5px;
+  text-align: left;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease, transform 150ms ease;
+}
+
+.page--materials .materials-facet-group button:hover {
+  border-color: #35353e;
+  background: #222229;
+  color: #efeff1;
+  transform: translateX(1px);
+}
+
+.page--materials .materials-facet-group button.is-active {
+  border-color: rgba(137, 113, 255, 0.28);
+  background: linear-gradient(90deg, rgba(115, 88, 244, 0.18), rgba(115, 88, 244, 0.06));
+  color: #f2efff;
+  box-shadow: inset 2px 0 0 #8d7af7, 0 6px 18px rgba(63, 45, 135, 0.08);
+}
+
+.page--materials .materials-facet-group button span {
+  color: #70707a;
+  font: 10px var(--font-mono);
+}
+
+.page--materials .materials-facet-group button.is-active span {
+  color: #b7a9ff;
+}
+
+.page--materials .materials-classified-results {
+  position: relative;
+  min-height: 420px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(114, 88, 244, 0.035), transparent 24%),
+    #fff;
+}
+
+.page--materials .materials-classified-results__head {
+  position: sticky;
+  top: 50px;
+  z-index: 3;
+  min-height: 43px;
+  background: rgba(250, 250, 248, 0.92);
+  backdrop-filter: blur(18px) saturate(130%);
+}
+
+.page--materials .materials-classified-results__head strong {
+  font-size: 12.5px;
+}
+
+.page--materials .materials-classified-results__head span {
+  color: var(--ui-text-tertiary);
+  font: 10px var(--font-mono);
+}
+
+.page--materials .material-row {
+  min-height: 55px;
+  transition: background 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.page--materials .material-row:hover {
+  z-index: 1;
+  background: linear-gradient(90deg, rgba(114, 88, 244, 0.045), #fafaf8 36%, #fafaf8);
+  box-shadow: inset 2px 0 0 rgba(114, 88, 244, 0.46);
+}
+
+.page--materials .material-row__identity strong {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.page--materials .material-row__identity > span,
+.page--materials .material-row__date,
+.page--materials .material-queue-button,
+.page--materials .material-row__type {
+  font-size: 10.5px;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Knowledge Index                                                            */
+/* -------------------------------------------------------------------------- */
+
+.collection-workspace {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.collection-workspace--single {
+  grid-template-columns: 1fr;
+}
+
+.collection-index,
+.collection-workspace__surface {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  background: #fff;
+  box-shadow: 0 18px 54px rgba(34, 30, 64, 0.04);
+}
+
+.collection-index {
+  position: sticky;
+  top: 64px;
+  margin: 0;
+  border-color: #303039;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(113, 87, 244, 0.14), transparent 26%),
+    linear-gradient(180deg, #1a1a20, #18181e 56%, #15151a);
+  color: #f4f4f6;
+}
+
+.collection-index__head {
+  min-height: 52px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #303039;
+  background: transparent;
+}
+
+.collection-index__head .eyebrow,
+.collection-index__meta {
+  color: #70707b;
+}
+
+.collection-index__head h2 {
+  margin-top: 2px;
+  color: #f4f4f6;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.collection-index__meta {
+  font-size: 10px;
+}
+
+.collection-index__pulse {
+  padding: 14px 14px 13px;
+  border-bottom: 1px solid #2d2d35;
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.collection-index__pulse span,
+.collection-index__pulse small {
+  display: block;
+}
+
+.collection-index__pulse span {
+  color: #696973;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+}
+
+.collection-index__pulse strong {
+  display: block;
+  margin-top: 5px;
+  color: #d6ccff;
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 650;
+  line-height: 1;
+  text-shadow: 0 0 26px rgba(123, 94, 255, 0.24);
+}
+
+.collection-index__pulse small {
+  margin-top: 5px;
+  overflow: hidden;
+  color: #92929c;
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collection-index .collection-groups {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2px;
+  margin: 0;
+  padding: 8px;
+  border: 0;
+}
+
+.collection-index .group-card {
+  display: grid;
+  min-height: 51px;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: #aaaab3;
+  box-shadow: none;
+  text-align: left;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease, transform 150ms ease;
+}
+
+.collection-index .group-card:hover {
+  transform: translateX(1px);
+  border-color: #363640;
+  background: #222229;
+}
+
+.collection-index .group-card--on {
+  border-color: rgba(137, 113, 255, 0.28);
+  background: linear-gradient(90deg, rgba(115, 88, 244, 0.20), rgba(115, 88, 244, 0.07));
+  color: #f4f1ff;
+  box-shadow: inset 2px 0 0 #8d7af7;
+}
+
+.collection-index .group-card__count {
+  color: #777782;
+  font: 12px var(--font-mono);
+  font-weight: 500;
+  text-align: center;
+}
+
+.collection-index .group-card--on .group-card__count {
+  color: #b9abff;
+}
+
+.collection-index .group-card__body {
+  min-width: 0;
+}
+
+.collection-index .group-card__label {
+  margin: 0;
+  color: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.collection-index .group-card__desc {
+  margin-top: 2px;
+  overflow: hidden;
+  color: #6f6f79;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collection-index .group-card--on .group-card__desc {
+  color: #9c93bf;
+}
+
+.collection-workspace__surface {
+  min-height: 420px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(114, 88, 244, 0.04), transparent 24%),
+    #fff;
+}
+
+.collection-list {
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.collection-list__head {
+  position: sticky;
+  top: 50px;
+  z-index: 4;
+  min-height: 52px;
+  border-bottom: 1px solid var(--ui-border);
+  background: rgba(250, 250, 248, 0.92);
+  backdrop-filter: blur(18px) saturate(130%);
+}
+
+.collection-list__head strong {
+  font-size: 12.5px;
+}
+
+.collection-list__head > span {
+  font-size: 10px;
+}
+
+.collection-list .doc-table__head {
+  min-height: 32px;
+  background: #f5f5f3;
+  color: #8b8b93;
+  font-size: 10px;
+}
+
+.page--collection .doc-row {
+  min-height: 54px;
+  transition: background 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.page--collection .doc-row:hover {
+  transform: none;
+  background: linear-gradient(90deg, rgba(114, 88, 244, 0.045), #fafaf8 34%, #fafaf8);
+  box-shadow: inset 2px 0 0 rgba(114, 88, 244, 0.50);
+}
+
+.page--collection .doc-row__title {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.page--collection .doc-row__sub,
+.page--collection .doc-row__cell,
+.page--collection .doc-row__date {
+  font-size: 10.5px;
+}
+
+.collection-loading {
+  display: grid;
+  gap: 7px;
+  padding: 12px;
+}
+
+.collection-loading .skeleton {
+  height: 52px;
+}
+
+.collection-empty--more {
+  border-top: 1px solid var(--ui-border);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Spatial Graph                                                              */
+/* -------------------------------------------------------------------------- */
+
+.graph-page-shell .graph-page.graph-page--immersive {
+  border: 1px solid rgba(191, 187, 207, 0.72);
+  background:
+    radial-gradient(circle at 68% 18%, rgba(113, 87, 244, 0.075), transparent 28%),
+    linear-gradient(180deg, #fbfbfa, #f7f7f5);
+  box-shadow:
+    0 30px 80px rgba(36, 30, 72, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.graph-page-shell .graph-page--immersive::before {
+  background-image:
+    radial-gradient(rgba(112, 88, 244, 0.15) 0.7px, transparent 0.7px),
+    linear-gradient(rgba(114, 88, 244, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(114, 88, 244, 0.035) 1px, transparent 1px);
+  background-size: 20px 20px, 80px 80px, 80px 80px;
+  opacity: 0.42;
+}
+
+.graph-page-shell .graph-lens,
+.graph-page-shell .graph-inspector {
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  background: rgba(248, 248, 247, 0.78);
+  box-shadow:
+    0 24px 64px rgba(29, 25, 51, 0.11),
+    inset 0 1px 0 rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(24px) saturate(138%);
+  -webkit-backdrop-filter: blur(24px) saturate(138%);
+}
+
+.graph-page-shell .graph-inspector {
+  box-shadow:
+    -16px 24px 70px rgba(29, 25, 51, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.88);
+}
+
+.graph-page-shell .knowledge-graph__controls {
+  border-color: rgba(206, 202, 220, 0.78);
+  background: rgba(250, 250, 249, 0.82);
+  box-shadow: 0 12px 32px rgba(31, 27, 52, 0.08);
+  backdrop-filter: blur(18px) saturate(130%);
+}
+
+.graph-page-shell .graph-stage__identity {
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+@media (max-width: 1080px) {
+  .materials-index-status {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .materials-index-status > div:nth-child(2) {
+    border-right: 0;
+  }
+
+  .materials-index-status > div:nth-child(-n + 2) {
+    border-bottom: 1px solid #2d2d36;
+  }
+
+  .collection-workspace {
+    grid-template-columns: 210px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 820px) {
+  .collection-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .collection-index {
+    position: static;
+  }
+
+  .collection-index .collection-groups {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .page--materials .materials-section--classification {
+    grid-template-columns: 1fr;
+  }
+
+  .page--materials .materials-facets {
+    grid-column: 1;
+    border-right: 0;
+    border-bottom: 1px solid #303039;
+  }
+
+  .page--materials .materials-classified-results {
+    grid-column: 1;
+  }
+}
+
+@media (max-width: 560px) {
+  .materials-index-status,
+  .collection-index .collection-groups {
+    grid-template-columns: 1fr;
+  }
+
+  .materials-index-status > div {
+    border-right: 0;
+    border-bottom: 1px solid #2d2d36;
+  }
+
+  .materials-index-status > div:last-child {
+    border-bottom: 0;
+  }
+
+  .collection-index .group-card {
+    min-height: 48px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page--materials .materials-facet-group button,
+  .page--materials .material-row,
+  .collection-index .group-card,
+  .page--collection .doc-row {
+    transition: none;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* V5.2 Signature workspaces · Evidence Observatory / Knowledge Atlas         */
+/* -------------------------------------------------------------------------- */
+
+.materials-observatory,
+.knowledge-atlas-hero {
+  --observatory-x: 72%;
+  --observatory-y: 36%;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  margin-bottom: 16px;
+  border: 1px solid #2d2d39;
+  border-radius: 14px;
+  color: #f7f7fa;
+  background:
+    radial-gradient(circle at var(--observatory-x) var(--observatory-y), rgba(116, 87, 255, 0.24), transparent 25%),
+    radial-gradient(circle at 94% 2%, rgba(64, 145, 255, 0.14), transparent 28%),
+    linear-gradient(122deg, #111219 0%, #151522 46%, #19172b 72%, #0f1721 100%);
+  box-shadow:
+    0 28px 86px rgba(32, 25, 69, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.045);
+}
+
+.materials-observatory::before,
+.knowledge-atlas-hero::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: linear-gradient(90deg, transparent 6%, #000 42%, #000 100%);
+  -webkit-mask-image: linear-gradient(90deg, transparent 6%, #000 42%, #000 100%);
+  opacity: 0.9;
+}
+
+.materials-observatory::after,
+.knowledge-atlas-hero::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: -62%;
+  right: 12%;
+  width: 360px;
+  aspect-ratio: 1;
+  border: 1px solid rgba(163, 143, 255, 0.11);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 54px rgba(141, 112, 255, 0.018),
+    0 0 0 108px rgba(141, 112, 255, 0.012),
+    0 0 110px rgba(112, 82, 255, 0.14);
+}
+
+.materials-observatory {
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(360px, 0.92fr);
+  min-height: 286px;
+}
+
+.materials-observatory__copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  padding: 34px 30px 28px;
+}
+
+.materials-observatory__kicker,
+.knowledge-atlas-hero__kicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #8f8b9f;
+  font-size: 10px;
+  letter-spacing: 0.15em;
+}
+
+.materials-observatory__kicker > span,
+.knowledge-atlas-hero__kicker > span {
+  width: 18px;
+  height: 1px;
+  background: linear-gradient(90deg, #9d8aff, transparent);
+  box-shadow: 0 0 12px rgba(135, 109, 255, 0.55);
+}
+
+.materials-observatory h1,
+.knowledge-atlas-hero h1 {
+  max-width: 760px;
+  margin: 14px 0 0;
+  color: #fff;
+  font-family: var(--font-display), "Noto Sans SC", sans-serif;
+  font-size: clamp(30px, 3vw, 46px);
+  font-weight: 650;
+  line-height: 1.08;
+  letter-spacing: -0.045em;
+}
+
+.materials-observatory__copy > p,
+.knowledge-atlas-hero__copy > p {
+  max-width: 700px;
+  margin: 14px 0 0;
+  color: #aaa8b7;
+  font-size: 13px;
+  line-height: 1.75;
+}
+
+.materials-observatory__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.materials-observatory__actions button {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px;
+  border: 1px solid rgba(186, 174, 255, 0.24);
+  border-radius: 7px;
+  background: rgba(127, 98, 255, 0.12);
+  color: #f5f2ff;
+  font-size: 11.5px;
+  font-weight: 600;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition: background 150ms ease, border-color 150ms ease, transform 150ms ease;
+}
+
+.materials-observatory__actions button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(190, 177, 255, 0.40);
+  background: rgba(127, 98, 255, 0.20);
+}
+
+.materials-observatory__actions button.is-secondary {
+  border-color: rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.045);
+  color: #c3c0cd;
+}
+
+.materials-observatory__actions button span {
+  color: #a99cff;
+  font-size: 10px;
+}
+
+.materials-observatory__metrics,
+.knowledge-atlas-hero__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 22px;
+  margin-top: 26px;
+}
+
+.materials-observatory__metrics > div,
+.knowledge-atlas-hero__facts > div {
+  position: relative;
+  min-width: 82px;
+  padding-left: 12px;
+}
+
+.materials-observatory__metrics > div::before,
+.knowledge-atlas-hero__facts > div::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  width: 1px;
+  background: linear-gradient(to bottom, rgba(146, 126, 255, 0.72), rgba(146, 126, 255, 0.05));
+}
+
+.materials-observatory__metrics strong,
+.materials-observatory__metrics span,
+.knowledge-atlas-hero__facts strong,
+.knowledge-atlas-hero__facts span {
+  display: block;
+}
+
+.materials-observatory__metrics strong,
+.knowledge-atlas-hero__facts strong {
+  color: #f5f3ff;
+  font-size: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.materials-observatory__metrics span,
+.knowledge-atlas-hero__facts span {
+  margin-top: 3px;
+  color: #777683;
+  font-size: 10.5px;
+}
+
+.materials-observatory__radar {
+  position: relative;
+  min-height: 286px;
+  border-left: 1px solid rgba(255, 255, 255, 0.055);
+  background:
+    linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.018)),
+    radial-gradient(circle at 50% 50%, rgba(115, 86, 255, 0.12), transparent 42%);
+}
+
+.evidence-radar__rings {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 190px;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(186, 174, 255, 0.19);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 35px rgba(143, 117, 255, 0.035),
+    0 0 0 70px rgba(143, 117, 255, 0.02),
+    inset 0 0 46px rgba(112, 84, 255, 0.07);
+}
+
+.evidence-radar__rings::before,
+.evidence-radar__rings::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  background: linear-gradient(90deg, transparent, rgba(174, 159, 255, 0.19), transparent);
+  transform-origin: center;
+}
+
+.evidence-radar__rings::before {
+  width: 240px;
+  height: 1px;
+  transform: translate(-50%, -50%) rotate(32deg);
+}
+
+.evidence-radar__rings::after {
+  width: 240px;
+  height: 1px;
+  transform: translate(-50%, -50%) rotate(-37deg);
+}
+
+.evidence-radar__core {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  width: 82px;
+  height: 82px;
+  place-items: center;
+  border: 1px solid rgba(203, 194, 255, 0.22);
+  border-radius: 50%;
+  background: rgba(17, 17, 28, 0.76);
+  transform: translate(-50%, -50%);
+  box-shadow:
+    0 0 0 10px rgba(118, 88, 255, 0.045),
+    0 0 46px rgba(114, 84, 255, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  backdrop-filter: blur(18px);
+}
+
+.evidence-radar__core strong,
+.evidence-radar__core span {
+  display: block;
+  text-align: center;
+}
+
+.evidence-radar__core strong {
+  color: #f7f5ff;
+  font-size: 25px;
+  line-height: 1;
+}
+
+.evidence-radar__core span {
+  margin-top: -22px;
+  color: #757180;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+}
+
+.evidence-radar__node {
+  position: absolute;
+  display: flex;
+  max-width: 132px;
+  align-items: center;
+  gap: 6px;
+  color: #a8a4b6;
+  font-size: 10.5px;
+}
+
+.evidence-radar__node em {
+  overflow: hidden;
+  color: inherit;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.evidence-radar__node b {
+  color: #756f85;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.evidence-radar__node::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border: 1px solid #d6d0ff;
+  border-radius: 50%;
+  background: #8d78ff;
+  box-shadow: 0 0 14px rgba(134, 104, 255, 0.8);
+}
+
+.evidence-radar__node--1 { top: 18%; left: 18%; }
+.evidence-radar__node--2 { top: 22%; right: 11%; }
+.evidence-radar__node--3 { right: 8%; bottom: 20%; }
+.evidence-radar__node--4 { bottom: 14%; left: 17%; }
+.evidence-radar__node--5 { top: 46%; left: 5%; }
+.evidence-radar__node--6 { top: 50%; right: 4%; }
+
+.evidence-radar__status {
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #817e8e;
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+}
+
+.evidence-radar__status i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #6dca8c;
+  box-shadow: 0 0 10px rgba(71, 188, 113, 0.56);
+}
+
+.page--materials .materials-section--classification {
+  margin-top: 0;
+}
+
+.page--materials .materials-index-status {
+  display: none;
+}
+
+.knowledge-atlas-hero {
+  --atlas-x: 72%;
+  --atlas-y: 36%;
+  --observatory-x: var(--atlas-x);
+  --observatory-y: var(--atlas-y);
+  display: grid;
+  grid-template-columns: minmax(0, 1.04fr) minmax(390px, 0.96fr);
+  min-height: 326px;
+}
+
+.knowledge-atlas-hero__copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  padding: 38px 34px 32px;
+}
+
+.memory-constellation {
+  position: relative;
+  min-height: 326px;
+  overflow: hidden;
+  border-left: 1px solid rgba(255, 255, 255, 0.055);
+  background:
+    radial-gradient(circle at 50% 48%, rgba(119, 89, 255, 0.15), transparent 28%),
+    radial-gradient(circle at 78% 22%, rgba(64, 138, 255, 0.08), transparent 25%);
+}
+
+.memory-constellation__glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 210px;
+  height: 210px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(132, 102, 255, 0.2), rgba(132, 102, 255, 0.02) 48%, transparent 70%);
+  filter: blur(6px);
+  transform: translate(-50%, -50%);
+}
+
+.memory-constellation__orbit {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border: 1px solid rgba(194, 181, 255, 0.15);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.memory-constellation__orbit--outer {
+  width: 252px;
+  height: 252px;
+  animation: workspace-orbit 32s linear infinite;
+}
+
+.memory-constellation__orbit--inner {
+  width: 154px;
+  height: 154px;
+  border-color: rgba(200, 188, 255, 0.26);
+  animation: workspace-orbit-reverse 21s linear infinite;
+}
+
+.memory-constellation__orbit::before,
+.memory-constellation__orbit::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 115%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(154, 133, 255, 0.20), transparent);
+  transform: translate(-50%, -50%) rotate(27deg);
+}
+
+.memory-constellation__orbit::after {
+  transform: translate(-50%, -50%) rotate(-34deg);
+}
+
+.memory-constellation__core {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  width: 92px;
+  height: 92px;
+  place-items: center;
+  border: 1px solid rgba(207, 197, 255, 0.26);
+  border-radius: 50%;
+  background: rgba(15, 15, 25, 0.74);
+  transform: translate(-50%, -50%);
+  box-shadow:
+    0 0 0 14px rgba(118, 88, 255, 0.035),
+    0 0 70px rgba(116, 86, 255, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(20px);
+}
+
+.memory-constellation__core strong,
+.memory-constellation__core span {
+  display: block;
+  text-align: center;
+}
+
+.memory-constellation__core strong {
+  color: #fff;
+  font-size: 30px;
+  line-height: 1;
+}
+
+.memory-constellation__core span {
+  margin-top: -26px;
+  color: #8b839e;
+  font-size: 9px;
+  letter-spacing: 0.11em;
+}
+
+.memory-constellation__node {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 165px;
+  color: #a29dae;
+  font-size: 10px;
+  font-style: normal;
+}
+
+.memory-constellation__node i {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border: 1px solid #ded8ff;
+  border-radius: 50%;
+  background: #8d78ff;
+  box-shadow: 0 0 16px rgba(136, 107, 255, 0.78);
+}
+
+.memory-constellation__node em {
+  overflow: hidden;
+  color: inherit;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memory-constellation__node--1 { top: 17%; left: 14%; }
+.memory-constellation__node--2 { top: 20%; right: 9%; }
+.memory-constellation__node--3 { right: 8%; bottom: 18%; }
+.memory-constellation__node--4 { bottom: 15%; left: 12%; }
+.memory-constellation__node--5 { top: 46%; left: 4%; }
+
+.memory-constellation__caption {
+  position: absolute;
+  right: 16px;
+  bottom: 13px;
+  color: #615e6c;
+  font-size: 9px;
+  letter-spacing: 0.13em;
+}
+
+.page--knowledge-atlas::before {
+  display: none;
+}
+
+.page--knowledge-atlas .collection-workspace {
+  margin-top: 0;
+}
+
+.page--knowledge-atlas .collection-workspace__surface {
+  min-height: 0;
+  border-radius: 10px;
+}
+
+.knowledge-dossiers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  padding: 14px;
+}
+
+.knowledge-dossier {
+  position: relative;
+  overflow: hidden;
+  min-height: 250px;
+  padding: 20px 18px 18px;
+  border: 1px solid #e0dfeb;
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 94% 6%, rgba(114, 88, 244, 0.10), transparent 24%),
+    linear-gradient(145deg, #fff, #fbfafc 76%);
+  color: var(--ui-text);
+  text-align: left;
+  box-shadow: 0 16px 48px rgba(43, 35, 87, 0.055);
+  transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
+}
+
+.knowledge-dossier::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(114, 88, 244, 0.78), transparent);
+  opacity: 0.48;
+}
+
+.knowledge-dossier:hover {
+  transform: translateY(-3px);
+  border-color: #cfc9ef;
+  box-shadow:
+    0 26px 64px rgba(42, 34, 84, 0.11),
+    0 0 0 1px rgba(114, 88, 244, 0.025);
+}
+
+.knowledge-dossier__index,
+.knowledge-dossier__type {
+  color: #9a98a4;
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+}
+
+.knowledge-dossier__type {
+  position: absolute;
+  top: 20px;
+  right: 18px;
+  max-width: 42%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.knowledge-dossier h3 {
+  max-width: 86%;
+  margin: 44px 0 0;
+  color: #1c1b22;
+  font-size: 19px;
+  font-weight: 650;
+  line-height: 1.28;
+  letter-spacing: -0.025em;
+}
+
+.knowledge-dossier p {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 11px 0 0;
+  color: #74727d;
+  font-size: 11.5px;
+  line-height: 1.62;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.knowledge-dossier__meta,
+.knowledge-dossier__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+
+.knowledge-dossier__meta {
+  margin-top: 18px;
+  color: #8a8892;
+  font-size: 10px;
+}
+
+.knowledge-dossier__tags {
+  margin-top: 10px;
+}
+
+.knowledge-dossier__tags span {
+  padding: 3px 7px;
+  border: 1px solid #e3e0ef;
+  border-radius: 999px;
+  background: rgba(246, 244, 252, 0.86);
+  color: #777184;
+  font-size: 9.5px;
+}
+
+.knowledge-dossier__open {
+  position: absolute;
+  right: 18px;
+  bottom: 17px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #6255a4;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+@keyframes workspace-orbit {
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+@keyframes workspace-orbit-reverse {
+  to { transform: translate(-50%, -50%) rotate(-360deg); }
+}
+
+@media (max-width: 1100px) {
+  .materials-observatory,
+  .knowledge-atlas-hero {
+    grid-template-columns: minmax(0, 1fr) 330px;
+  }
+
+  .materials-observatory__copy,
+  .knowledge-atlas-hero__copy {
+    padding-inline: 24px;
+  }
+}
+
+@media (max-width: 850px) {
+  .materials-observatory,
+  .knowledge-atlas-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .materials-observatory__radar,
+  .memory-constellation {
+    min-height: 250px;
+    border-top: 1px solid rgba(255, 255, 255, 0.055);
+    border-left: 0;
+  }
+
+  .knowledge-dossiers {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .materials-observatory__copy,
+  .knowledge-atlas-hero__copy {
+    padding: 28px 18px 24px;
+  }
+
+  .materials-observatory h1,
+  .knowledge-atlas-hero h1 {
+    font-size: 29px;
+  }
+
+  .materials-observatory__metrics,
+  .knowledge-atlas-hero__facts {
+    gap: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .memory-constellation__orbit--outer,
+  .memory-constellation__orbit--inner,
+  .knowledge-dossier {
+    animation: none;
+    transition: none;
+  }
+
+  .knowledge-dossier:hover {
+    transform: none;
+  }
+}

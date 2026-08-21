@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import path from "node:path";
 
 const MATERIAL_ROOT = "10_raw";
@@ -62,6 +63,150 @@ function sortDocuments(items) {
     const dateDifference = updatedTime(right.updatedAt) - updatedTime(left.updatedAt);
     return dateDifference || left.title.localeCompare(right.title, "zh-CN");
   });
+}
+
+function countValues(items, readValues) {
+  const counts = new Map();
+  for (const item of items) {
+    const values = readValues(item);
+    for (const raw of Array.isArray(values) ? values : [values]) {
+      const value = String(raw || "").trim();
+      if (!value) continue;
+      counts.set(value, (counts.get(value) || 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .map(([value, count]) => ({ value, count }))
+    .sort((left, right) => right.count - left.count || left.value.localeCompare(right.value, "zh-CN"));
+}
+
+function classificationSummary(items) {
+  const unclassifiedItems = items.filter((item) => !item.domain || !item.contentKind);
+  const classified = items.length - unclassifiedItems.length;
+  return {
+    classified,
+    unclassified: unclassifiedItems.length,
+    coveragePct: items.length ? Math.round((classified / items.length) * 100) : 100,
+    domains: countValues(items, (item) => item.domain),
+    topics: countValues(items, (item) => item.topics || []),
+    contentKinds: countValues(items, (item) => item.contentKind),
+    useCases: countValues(items, (item) => item.useCases || []),
+    sourceTypes: countValues(items, (item) => item.sourceType),
+    audit: unclassifiedItems.slice(0, 100).map((item) => ({
+      id: item.id,
+      path: item.path,
+      title: item.title,
+      missing: [
+        !item.domain ? "domain" : null,
+        !item.contentKind ? "content_kind" : null,
+      ].filter(Boolean),
+      topicCandidates: (item.tags || []).slice(0, 12),
+      currentDomain: item.domain || null,
+      currentContentKind: item.contentKind || null,
+    })),
+  };
+}
+
+function p2AdmissionSummary(items) {
+  const sourceTypes = countValues(items, (item) => item.sourceType || "未标注来源");
+  const reviewedSummaryItems = items.filter((item) =>
+    item.frontmatter?.summary_sha256 && item.frontmatter?.summary_source_sha256,
+  );
+  const classifiedItems = items.filter((item) => item.domain && item.contentKind);
+  const reuseSignalItems = items.filter((item) =>
+    item.isQueued || (Array.isArray(item.useCases) && item.useCases.length > 0),
+  );
+
+  const duplicateBuckets = new Map();
+  for (const item of items) {
+    const key = String(
+      item.frontmatter?.summary_source_sha256 ||
+      item.frontmatter?.source_sha256 ||
+      item.frontmatter?.source_url ||
+      "",
+    ).trim();
+    if (!key) continue;
+    const bucket = duplicateBuckets.get(key) || [];
+    bucket.push(item);
+    duplicateBuckets.set(key, bucket);
+  }
+  const duplicateGroups = [...duplicateBuckets.values()]
+    .filter((group) => group.length > 1)
+    .map((group) => ({
+      count: group.length,
+      items: group.slice(0, 8).map((item) => ({
+        id: item.id,
+        path: item.path,
+        title: item.title,
+      })),
+    }));
+
+  const snapshotFingerprint = createHash("sha256")
+    .update(
+      items
+        .map((item) => [
+          item.id,
+          item.path,
+          item.frontmatter?.summary_source_sha256 || item.frontmatter?.source_sha256 || item.frontmatter?.source_url || "",
+          item.frontmatter?.summary_sha256 || "",
+          item.domain || "",
+          item.contentKind || "",
+          Array.isArray(item.useCases) ? [...item.useCases].sort().join(",") : "",
+          item.isQueued ? "queued" : "",
+        ].join("\u001f"))
+        .sort()
+        .join("\u001e"),
+      "utf8",
+    )
+    .digest("hex");
+
+  const readyForDecision = items.length > 0;
+  const recommendedForApproval =
+    reviewedSummaryItems.length > 0 &&
+    classifiedItems.length > 0 &&
+    reuseSignalItems.length > 0;
+
+  return {
+    totalRaw: items.length,
+    snapshotFingerprint,
+    sourceTypes,
+    reviewedSummaryCount: reviewedSummaryItems.length,
+    classificationCompleteCount: classifiedItems.length,
+    reuseSignalCount: reuseSignalItems.length,
+    duplicateGroupCount: duplicateGroups.length,
+    duplicateItemCount: duplicateGroups.reduce((sum, group) => sum + group.count, 0),
+    duplicateGroups: duplicateGroups.slice(0, 20),
+    readyForDecision,
+    recommendedForApproval,
+    userDecisionRequired: true,
+    automaticApproval: false,
+    checks: [
+      {
+        id: "real-raw",
+        label: "已有真实来源资料可供评测",
+        ready: items.length > 0,
+        value: items.length,
+      },
+      {
+        id: "reviewed-summary",
+        label: "已有经过第一次审核的 AI 候选总结",
+        ready: reviewedSummaryItems.length > 0,
+        value: reviewedSummaryItems.length,
+      },
+      {
+        id: "classification",
+        label: "已有完成分类的来源资料",
+        ready: classifiedItems.length > 0,
+        value: classifiedItems.length,
+      },
+      {
+        id: "reuse-signal",
+        label: "已有明确复用信号（用途或待看）",
+        ready: reuseSignalItems.length > 0,
+        value: reuseSignalItems.length,
+      },
+    ],
+  };
 }
 
 function queueMaps(readingState) {
@@ -229,6 +374,9 @@ export function materialsHomePayload(index, readingState = { items: [] }) {
     queue,
     queuePreview: queue.slice(0, 8),
     recent: sortDocuments(folderIndex.documents).slice(0, 12),
+    items: sortDocuments(folderIndex.documents),
+    classification: classificationSummary(folderIndex.documents),
+    p2Admission: p2AdmissionSummary(folderIndex.documents),
     total: folderIndex.documents.length,
   };
 }

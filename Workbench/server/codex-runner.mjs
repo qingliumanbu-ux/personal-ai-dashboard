@@ -1,5 +1,6 @@
 import { spawn as spawnProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { stat } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -75,11 +76,73 @@ function normalizeBrief(value) {
   return brief;
 }
 
-function pathCandidatesFromEnvironment(env) {
+async function isRegularFile(candidatePath) {
+  try {
+    return (await stat(candidatePath)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function pathApiForPlatform(platform) {
+  return platform === "win32" ? path.win32 : path.posix;
+}
+
+function npmCodexEntrypoint(directory, pathApi) {
+  return pathApi.join(directory, "node_modules", "@openai", "codex", "bin", "codex.js");
+}
+
+function explicitCodexCandidates(env, platform, pathApi) {
+  const configured = String(env?.PERSONAL_DASHBOARD_CODEX_PATH ?? "").trim();
+  if (!configured) return [];
+  const extension = pathApi.extname(configured).toLowerCase();
+  if ([".cmd", ".bat", ".ps1"].includes(extension)) {
+    return [{
+      kind: "node-script",
+      scriptPath: npmCodexEntrypoint(pathApi.dirname(configured), pathApi),
+      source: "configured-npm-shim",
+    }];
+  }
+  if (extension === ".js" || extension === ".mjs" || extension === ".cjs") {
+    return [{ kind: "node-script", scriptPath: configured, source: "configured-node-script" }];
+  }
+  return [{ kind: "executable", executablePath: configured, source: "configured" }];
+}
+
+function windowsNpmCandidates(env, pathApi) {
+  const directories = new Set();
+  if (env?.APPDATA) directories.add(pathApi.join(env.APPDATA, "npm"));
+  if (env?.USERPROFILE) {
+    directories.add(pathApi.join(env.USERPROFILE, "AppData", "Roaming", "npm"));
+    directories.add(pathApi.join(env.USERPROFILE, ".npm-global", "bin"));
+  }
+  return [...directories].map((directory) => ({
+    kind: "node-script",
+    scriptPath: npmCodexEntrypoint(directory, pathApi),
+    source: "windows-npm-global",
+  }));
+}
+
+function pathCandidatesFromEnvironment(env, platform, pathApi) {
   const candidates = [];
-  for (const directory of String(env?.PATH ?? "").split(path.delimiter)) {
-    if (!directory) continue;
-    candidates.push(path.join(directory, "codex"));
+  const executableNames = platform === "win32" ? ["codex.exe", "codex"] : ["codex"];
+  for (const directory of String(env?.PATH ?? "").split(pathApi.delimiter)) {
+    const cleanDirectory = directory.trim().replace(/^"|"$/g, "");
+    if (!cleanDirectory) continue;
+    for (const name of executableNames) {
+      candidates.push({
+        kind: "executable",
+        executablePath: pathApi.join(cleanDirectory, name),
+        source: "path",
+      });
+    }
+    if (platform === "win32") {
+      candidates.push({
+        kind: "node-script",
+        scriptPath: npmCodexEntrypoint(cleanDirectory, pathApi),
+        source: "path-npm-global",
+      });
+    }
   }
   return candidates;
 }
@@ -87,26 +150,45 @@ function pathCandidatesFromEnvironment(env) {
 export async function detectCodexCli({
   env = process.env,
   chatGptCodexPath = CHATGPT_CODEX_PATH,
+  platform = process.platform,
+  nodeExecutable = process.execPath,
+  isExecutableImpl = isExecutableFile,
+  isRegularFileImpl = isRegularFile,
 } = {}) {
+  const pathApi = pathApiForPlatform(platform);
   const candidates = [
-    { executablePath: chatGptCodexPath, source: "chatgpt-bundle" },
-    ...pathCandidatesFromEnvironment(env).map((executablePath) => ({
-      executablePath,
-      source: "path",
-    })),
+    ...explicitCodexCandidates(env, platform, pathApi),
+    ...(platform === "win32" ? windowsNpmCandidates(env, pathApi) : []),
+    { kind: "executable", executablePath: chatGptCodexPath, source: "chatgpt-bundle" },
+    ...pathCandidatesFromEnvironment(env, platform, pathApi),
   ];
   const checked = [];
   const seen = new Set();
 
   for (const candidate of candidates) {
-    const absolutePath = path.resolve(candidate.executablePath);
-    if (seen.has(absolutePath)) continue;
-    seen.add(absolutePath);
+    const candidatePath = candidate.kind === "node-script"
+      ? candidate.scriptPath
+      : candidate.executablePath;
+    const absolutePath = pathApi.resolve(candidatePath);
+    const key = `${candidate.kind}:${absolutePath}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
     checked.push(absolutePath);
-    if (await isExecutableFile(absolutePath)) {
+    if (candidate.kind === "node-script") {
+      if (!(await isRegularFileImpl(absolutePath))) continue;
+      return {
+        available: true,
+        executablePath: nodeExecutable,
+        argsPrefix: [absolutePath],
+        source: candidate.source,
+        checked,
+      };
+    }
+    if (await isExecutableImpl(absolutePath)) {
       return {
         available: true,
         executablePath: absolutePath,
+        argsPrefix: [],
         source: candidate.source,
         checked,
       };
@@ -116,9 +198,12 @@ export async function detectCodexCli({
   return {
     available: false,
     executablePath: null,
+    argsPrefix: [],
     source: null,
     checked,
-    reason: "未检测到 ChatGPT 内置 Codex CLI 或 PATH 中的 codex。",
+    reason: platform === "win32"
+      ? "未检测到可用的 Codex CLI。已检查 PERSONAL_DASHBOARD_CODEX_PATH、Windows npm 全局安装目录、ChatGPT 内置路径与 PATH。"
+      : "未检测到 ChatGPT 内置 Codex CLI、PERSONAL_DASHBOARD_CODEX_PATH 或 PATH 中的 codex。",
   };
 }
 
@@ -339,6 +424,7 @@ export function createCodexRunner({
     }
 
     const args = [
+      ...(detection.argsPrefix ?? []),
       ...CODEX_EXEC_ARGS,
       "-C",
       job.vaultRoot,

@@ -11,7 +11,8 @@ from pathlib import Path
 from typing import Callable
 
 from .queue import JobQueue, Publication
-from .summary import SUMMARY_PROMPT_VERSION, validate_candidate_summary
+from .classification import ClassificationValidationError, validate_classification
+from .summary import candidate_summary_prompt_version, validate_candidate_summary
 
 
 RAW_VIDEO_DIRECTORY = Path("04-来源资料") / "视频"
@@ -122,6 +123,11 @@ class Publisher:
             raise PublicationNotAllowedError("Only an approved job can be published")
 
         artifacts = {artifact.kind: artifact for artifact in self.queue.list_artifacts(job_id)}
+        if (
+            job.params.get("classification_required") == "true"
+            and "classification" not in artifacts
+        ):
+            raise PublicationStateError("发布前必须先确认资料分类。")
         if job.source_type == "web-page":
             return self._build_web_publication(job, review, artifacts)
         if job.source_type == "douyin":
@@ -145,6 +151,7 @@ class Publisher:
         relative_path = (RAW_VIDEO_DIRECTORY / filename).as_posix()
         capture_frontmatter, capture_body = _capture_markdown(job.params)
         summary_frontmatter, summary_body = _summary_markdown(job, artifacts, transcript)
+        classification_frontmatter, classification_body = _classification_markdown(job, artifacts)
         markdown = "\n".join(
             (
                 "---",
@@ -159,6 +166,7 @@ class Publisher:
                 f"published_at: {json.dumps(review.created_at)}",
                 *capture_frontmatter,
                 *summary_frontmatter,
+                *classification_frontmatter,
                 "---",
                 "",
                 f"# {title}",
@@ -170,6 +178,7 @@ class Publisher:
                 "",
                 *capture_body,
                 *summary_body,
+                *classification_body,
                 "## 全文转写",
                 "",
                 transcript_text,
@@ -212,6 +221,7 @@ class Publisher:
         body = _without_leading_title(content_text, title)
         capture_frontmatter, capture_body = _capture_markdown(job.params)
         summary_frontmatter, summary_body = _summary_markdown(job, artifacts, content)
+        classification_frontmatter, classification_body = _classification_markdown(job, artifacts)
         markdown = "\n".join(
             (
                 "---",
@@ -227,6 +237,7 @@ class Publisher:
                 f"published_at: {json.dumps(review.created_at)}",
                 *capture_frontmatter,
                 *summary_frontmatter,
+                *classification_frontmatter,
                 "---",
                 "",
                 f"# {title}",
@@ -239,6 +250,7 @@ class Publisher:
                 "",
                 *capture_body,
                 *summary_body,
+                *classification_body,
                 "## 网页正文",
                 "",
                 body,
@@ -294,6 +306,7 @@ class Publisher:
         relative_path = (RAW_VIDEO_DIRECTORY / filename).as_posix()
         capture_frontmatter, capture_body = _capture_markdown(job.params)
         summary_frontmatter, summary_body = _summary_markdown(job, artifacts, transcript)
+        classification_frontmatter, classification_body = _classification_markdown(job, artifacts)
         markdown = "\n".join(
             (
                 "---",
@@ -311,6 +324,7 @@ class Publisher:
                 f"published_at: {json.dumps(review.created_at)}",
                 *capture_frontmatter,
                 *summary_frontmatter,
+                *classification_frontmatter,
                 "---",
                 "",
                 f"# {title}",
@@ -325,6 +339,7 @@ class Publisher:
                 "",
                 *capture_body,
                 *summary_body,
+                *classification_body,
                 "## 全文转写",
                 "",
                 transcript_text,
@@ -396,6 +411,7 @@ class Publisher:
         relative_path = (RAW_VIDEO_DIRECTORY / filename).as_posix()
         capture_frontmatter, capture_body = _capture_markdown(job.params)
         summary_frontmatter, summary_body = _summary_markdown(job, artifacts, content)
+        classification_frontmatter, classification_body = _classification_markdown(job, artifacts)
         body = _without_leading_title(content_text, title).partition("\n## 图片")[0].strip()
         image_body = tuple(
             line
@@ -420,6 +436,7 @@ class Publisher:
                 f"published_at: {json.dumps(review.created_at)}",
                 *capture_frontmatter,
                 *summary_frontmatter,
+                *classification_frontmatter,
                 "---",
                 "",
                 f"# {title}",
@@ -435,6 +452,7 @@ class Publisher:
                 "",
                 *capture_body,
                 *summary_body,
+                *classification_body,
                 "## 图文正文",
                 "",
                 body,
@@ -553,7 +571,7 @@ def _summary_markdown(job, artifacts, source_artifact) -> tuple[tuple[str, ...],
     content = validate_candidate_summary(summary.path.read_text(encoding="utf-8"))
     frontmatter = (
         'summary_origin: "manual-import"',
-        f'summary_prompt_version: {json.dumps(SUMMARY_PROMPT_VERSION)}',
+        f'summary_prompt_version: {json.dumps(candidate_summary_prompt_version(content))}',
         f'summary_source_sha256: {json.dumps(source_artifact.sha256)}',
         f'summary_sha256: {json.dumps(summary.sha256)}',
     )
@@ -563,6 +581,52 @@ def _summary_markdown(job, artifacts, source_artifact) -> tuple[tuple[str, ...],
         "> 以下内容由用户选择的 AI 生成并在发布前人工核对；它是来源资料的候选说明，不等于正式知识。",
         "",
         content,
+        "",
+    )
+    return frontmatter, body
+
+
+def _classification_markdown(job, artifacts) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    artifact = artifacts.get("classification")
+    if artifact is None:
+        if job.params.get("classification_required") == "true":
+            raise PublicationStateError("发布前必须先确认资料分类。")
+        return (), ()
+    try:
+        payload = json.loads(artifact.path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise PublicationStateError("分类产物无法读取。") from error
+
+    try:
+        classification = validate_classification(
+            domain=payload.get("domain"),
+            topics=payload.get("topics"),
+            content_kind=payload.get("content_kind"),
+            use_cases=payload.get("use_cases"),
+        )
+    except ClassificationValidationError as error:
+        raise PublicationStateError(f"分类产物无效：{error}") from error
+
+    domain = str(classification["domain"])
+    content_kind = str(classification["content_kind"])
+    topics = list(classification["topics"])
+    use_cases = list(classification["use_cases"])
+    version = str(classification["version"])
+
+    frontmatter = (
+        f"classification_version: {json.dumps(version, ensure_ascii=False)}",
+        f"domain: {json.dumps(domain, ensure_ascii=False)}",
+        f"topics: {json.dumps(topics, ensure_ascii=False)}",
+        f"content_kind: {json.dumps(content_kind, ensure_ascii=False)}",
+        f"use_cases: {json.dumps(use_cases, ensure_ascii=False)}",
+    )
+    body = (
+        "## 分类",
+        "",
+        f"- 领域：{domain}",
+        f"- 主题：{'、'.join(str(item) for item in topics) if topics else '未填写'}",
+        f"- 内容类型：{content_kind}",
+        f"- 用途：{'、'.join(str(item) for item in use_cases) if use_cases else '未填写'}",
         "",
     )
     return frontmatter, body

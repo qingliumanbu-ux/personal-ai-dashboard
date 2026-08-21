@@ -57,48 +57,54 @@ export function normalizeVaultEventPath(vaultRoot, candidatePath) {
   return relativePath;
 }
 
-export function affectedScopesForPaths(paths = []) {
+export function affectedScopesForPaths(paths = [], roots = {}) {
+  const wikiRoot = roots.wiki || "wiki";
+  const rawRoot = roots.raw || "10_raw";
+  const topicsRoot = roots.topics || "40_topics";
+  const scriptsRoot = roots.scripts || "50_scripts";
+  const runsRoot = roots.runs || "90_runs";
+  const selfMediaRoot = roots.selfMedia || "30_self_media";
   const scopes = new Set(["runtime"]);
   for (const relativePath of paths) {
     const value = String(relativePath);
     const top = value.split("/")[0];
     scopes.add("search");
     scopes.add("recent");
-    if (top === "wiki") {
+    if (top === wikiRoot) {
       ["wiki", "graph", "overview"].forEach((scope) => scopes.add(scope));
-    } else if (top === "10_raw") {
+    } else if (top === rawRoot) {
       scopes.add("materials");
       scopes.add("overview");
       if (value.includes("/.workbench-material-reading-state.json")) {
         scopes.add("reading_queue");
       }
-      if (value.startsWith("10_raw/douyin/")) {
+      if (value.startsWith(`${rawRoot}/douyin/`)) {
         scopes.add("douyin");
         scopes.add("overview");
       }
-      if (value.startsWith("10_raw/social-insights/")) {
+      if (value.startsWith(`${rawRoot}/social-insights/`)) {
         scopes.add("social_insights");
       }
     } else if (top === "Brainstorm") {
       scopes.add("brainstorm");
-    } else if (top === "40_topics") {
+    } else if (top === topicsRoot) {
       ["topics", "content", "overview"].forEach((scope) => scopes.add(scope));
-    } else if (top === "50_scripts") {
+    } else if (top === scriptsRoot) {
       scopes.add("content");
       scopes.add("overview");
-      if (value.startsWith("50_scripts/public-account/")) {
+      if (value.startsWith(`${scriptsRoot}/public-account/`)) {
         scopes.add("public_account");
       }
-    } else if (top === "90_runs") {
+    } else if (top === runsRoot) {
       scopes.add("archive");
-      if (value.startsWith("90_runs/data_reviews/douyin/")) {
+      if (value.startsWith(`${runsRoot}/data_reviews/douyin/`)) {
         scopes.add("douyin");
         scopes.add("overview");
       }
-    } else if (top === "30_self_media") {
+    } else if (selfMediaRoot && top === selfMediaRoot) {
       scopes.add("overview");
-      if (value.startsWith("30_self_media/douyin/")) scopes.add("douyin");
-      if (value.startsWith("30_self_media/public-account/")) {
+      if (value.startsWith(`${selfMediaRoot}/douyin/`)) scopes.add("douyin");
+      if (value.startsWith(`${selfMediaRoot}/public-account/`)) {
         scopes.add("public_account");
       }
     } else {
@@ -120,6 +126,7 @@ function publicError(error) {
 export function createVaultSyncService({
   vaultRoot,
   buildIndex = buildVaultIndex,
+  roots = {},
   debounceMs = DEFAULT_DEBOUNCE_MS,
   now = () => new Date(),
   setTimer = setTimeout,
@@ -185,7 +192,7 @@ export function createVaultSyncService({
           reason,
           generatedAt: nextIndex.generatedAt,
           changedPaths,
-          affectedScopes: affectedScopesForPaths(changedPaths),
+          affectedScopes: affectedScopesForPaths(changedPaths, roots),
           changeCount: paths.length,
           eventTypes: [...new Set(eventTypes)].sort(),
           ...snapshot(),

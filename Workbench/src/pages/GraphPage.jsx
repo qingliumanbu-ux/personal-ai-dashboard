@@ -8,6 +8,11 @@ import {
 } from "@tabler/icons-react";
 import { KnowledgeGraph } from "../components/KnowledgeGraph";
 import { PageHeader } from "../components/PageHeader";
+import {
+  getGraphPerformanceBudget,
+  selectRenderableLinks,
+  selectRenderableNodes,
+} from "../graph/graph-performance-budget.js";
 import { loadGraph } from "../lib/api";
 import { formatCompactDate, statusLabel } from "../lib/format";
 import {
@@ -77,6 +82,19 @@ export function GraphPage({ onOpenDocument }) {
   const nodes = data?.nodes ?? [];
   const edges = data?.edges ?? [];
 
+  const graphBudget = useMemo(
+    () =>
+      getGraphPerformanceBudget({
+        mode: "auto",
+        nodeCount: nodes.length,
+        linkCount: edges.length,
+        reducedMotion:
+          typeof window !== "undefined" &&
+          window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true,
+      }),
+    [nodes.length, edges.length],
+  );
+
   const typeEntries = useMemo(() => {
     const counts = data?.typeCounts ?? {};
     return Object.entries(counts).sort((a, b) => b[1] - a[1]);
@@ -125,6 +143,37 @@ export function GraphPage({ onOpenDocument }) {
       })
       .slice(0, 7);
   }, [query, nodes, activeTypes, activeStatuses]);
+
+  const searchMatchIds = useMemo(
+    () => new Set(searchResults.map((node) => node.id)),
+    [searchResults],
+  );
+
+  const renderNodes = useMemo(
+    () =>
+      selectRenderableNodes(nodes, graphBudget, {
+        activeId: selected?.id ?? null,
+        searchMatchIds,
+      }),
+    [nodes, graphBudget, selected?.id, searchMatchIds],
+  );
+
+  const renderNodeIds = useMemo(
+    () => new Set(renderNodes.map((node) => node.id)),
+    [renderNodes],
+  );
+
+  const renderEdges = useMemo(() => {
+    const eligible = edges.filter((edge) => {
+      const { source, target } = edgeIds(edge);
+      return renderNodeIds.has(source) && renderNodeIds.has(target);
+    });
+    return selectRenderableLinks(eligible, renderNodes, graphBudget, {
+      activeId: selected?.id ?? null,
+    });
+  }, [edges, renderNodes, renderNodeIds, graphBudget, selected?.id]);
+
+  const graphIsBudgeted = renderNodes.length < nodes.length || renderEdges.length < edges.length;
 
   const neighborRelations = useMemo(() => {
     if (!selected) return [];
@@ -246,8 +295,8 @@ export function GraphPage({ onOpenDocument }) {
         <KnowledgeGraph
           activeStatuses={activeStatuses}
           activeTypes={activeTypes}
-          edges={edges}
-          nodes={nodes}
+          edges={renderEdges}
+          nodes={renderNodes}
           onActivate={(node) => onOpenDocument?.(node.id)}
           onSelect={setSelected}
           selectedId={selected?.id ?? null}
@@ -264,13 +313,20 @@ export function GraphPage({ onOpenDocument }) {
             <span><b>{data.stats.edgeCount}</b> 双链</span>
             <span><b>{data.stats.isolatedCount}</b> 孤岛</span>
           </div>
-          <p>拖拽 · 滚轮缩放 · 双击阅读</p>
+          <p>
+            拖拽 · 滚轮缩放 · 双击阅读
+            {graphIsBudgeted
+              ? ` · 当前安全渲染 ${renderNodes.length}/${nodes.length} 节点 · ${renderEdges.length}/${edges.length} 关系`
+              : ""}
+          </p>
         </div>
 
         <div className="graph-search-shell">
           <IconSearch aria-hidden="true" />
           <input
             aria-label="搜索图谱节点"
+            autoComplete="off"
+            name="graph-search"
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter" && searchResults[0]) selectNode(searchResults[0]);
@@ -281,6 +337,7 @@ export function GraphPage({ onOpenDocument }) {
             }}
             placeholder={`搜索 ${nodes.length} 个知识页…`}
             ref={searchRef}
+            spellCheck={false}
             type="search"
             value={query}
           />
@@ -374,7 +431,12 @@ export function GraphPage({ onOpenDocument }) {
               </div>
             </div>
 
-            <p className="graph-lens__footnote">节点大小代表连接数；筛选仅改变视图，不修改 Wiki。</p>
+            <p className="graph-lens__footnote">
+              节点大小代表连接数；筛选仅改变视图，不修改 Wiki。
+              {graphIsBudgeted
+                ? ` 当前采用${graphBudget.label}性能预算，优先保留选中、搜索命中和高重要度节点。`
+                : ""}
+            </p>
           </aside>
         ) : (
           <button className="graph-lens-toggle graph-overlay" onClick={() => setLensOpen(true)} type="button">

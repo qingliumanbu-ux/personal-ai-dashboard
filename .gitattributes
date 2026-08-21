@@ -1,0 +1,19 @@
+* text=auto
+
+# Keep source and documentation stable across Windows and Docker/Linux.
+*.js text eol=lf
+*.jsx text eol=lf
+*.mjs text eol=lf
+*.css text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.html text eol=lf
+*.py text eol=lf
+*.toml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Windows-native scripts remain CRLF in the Windows worktree.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf

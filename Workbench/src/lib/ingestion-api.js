@@ -64,10 +64,39 @@ export function loadCandidateSummaryPrompt(jobId) {
   return request(`/jobs/${encodeURIComponent(jobId)}/summary-prompt`);
 }
 
+export async function generateCandidateSummary(prompt) {
+  const response = await fetch("/api/candidate-summary/generate", {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ prompt }),
+  });
+  if (!response.ok) {
+    let message = `AI 总结请求失败（${response.status}）`;
+    try {
+      const payload = await response.json();
+      message = payload?.error?.message || payload?.message || message;
+    } catch {
+      // Keep the status-based error when the Workbench service did not return JSON.
+    }
+    throw new Error(message);
+  }
+  return response.json();
+}
+
 export function saveCandidateSummary(jobId, content) {
   return request(`/jobs/${encodeURIComponent(jobId)}/candidate-summary`, {
     method: "POST",
     body: JSON.stringify({ content }),
+  });
+}
+
+export function saveIngestionClassification(jobId, classification) {
+  return request(`/jobs/${encodeURIComponent(jobId)}/classification`, {
+    method: "POST",
+    body: JSON.stringify(classification),
   });
 }
 

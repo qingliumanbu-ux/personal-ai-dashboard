@@ -47,6 +47,12 @@ from .summary import (
     build_summary_prompt,
     validate_candidate_summary,
 )
+from .classification import (
+    ClassificationValidationError,
+    classification_options,
+    classification_suggestion_from_summary,
+    validate_classification,
+)
 
 
 class CreateJobRequest(BaseModel):
@@ -81,6 +87,13 @@ class RetryJobRequest(BaseModel):
 
 class CandidateSummaryRequest(BaseModel):
     content: str = Field(min_length=1, max_length=30_000)
+
+
+class ClassificationRequest(BaseModel):
+    domain: str
+    topics: list[str] = Field(default_factory=list)
+    content_kind: str
+    use_cases: list[str] = Field(default_factory=list)
 
 
 _IMAGE_MEDIA_TYPES = {
@@ -172,6 +185,7 @@ def create_app(
     @app.get("/api/health")
     def health() -> dict:
         return {
+            "service": "personal-ai-dashboard-ingestion",
             "status": "ok",
             "capabilities": {
                 "vad": {
@@ -322,6 +336,40 @@ def create_app(
                 else None
             )
             payload["publication_blocker"] = publication_blocker
+
+            artifacts = queue.list_artifacts(job_id)
+            classification_artifact = next(
+                (item for item in artifacts if item.kind == "classification"),
+                None,
+            )
+            confirmed_classification = None
+            if classification_artifact is not None:
+                try:
+                    confirmed_classification = json.loads(
+                        classification_artifact.path.read_text(encoding="utf-8")
+                    )
+                except (OSError, ValueError):
+                    confirmed_classification = None
+
+            summary_artifact = next(
+                (item for item in artifacts if item.kind == "candidate_summary"),
+                None,
+            )
+            suggestion = None
+            if summary_artifact is not None:
+                try:
+                    suggestion = classification_suggestion_from_summary(
+                        summary_artifact.path.read_text(encoding="utf-8")
+                    )
+                except (OSError, ValueError):
+                    suggestion = None
+            payload["classification"] = {
+                "required": job.params.get("classification_required") == "true",
+                "options": classification_options(),
+                "suggestion": suggestion,
+                "confirmed": confirmed_classification,
+            }
+
             retention = queue.get_media_retention(job_id)
             source_media = next(
                 (
@@ -448,6 +496,25 @@ def create_app(
         except (OSError, ValueError, SummaryValidationError) as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
 
+    @app.post("/api/jobs/{job_id}/classification")
+    def save_job_classification(job_id: str, payload: ClassificationRequest) -> dict:
+        try:
+            classification = validate_classification(
+                domain=payload.domain,
+                topics=payload.topics,
+                content_kind=payload.content_kind,
+                use_cases=payload.use_cases,
+            )
+            artifact = queue.save_classification(job_id, classification)
+            return {
+                "classification": classification,
+                "artifact": _artifact_payload(job_id, artifact),
+            }
+        except JobNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Job not found") from error
+        except (OSError, ValueError, ClassificationValidationError) as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
     @app.post("/api/jobs/{job_id}/publish")
     def publish_job(job_id: str, payload: PublishJobRequest) -> dict:
         if not payload.confirm:
@@ -554,7 +621,10 @@ def _capture_params(payload: CreateJobRequest) -> dict[str, str]:
     if payload.source_text is not None and len(payload.source_text.strip()) > 4_000:
         raise HTTPException(status_code=422, detail="分享文本不能超过 4000 个字符。")
 
-    params = {"summary_required": "true"}
+    params = {
+        "summary_required": "true",
+        "classification_required": "true",
+    }
     if tags:
         params["capture_tags"] = json.dumps(tags, ensure_ascii=False)
     if reason:

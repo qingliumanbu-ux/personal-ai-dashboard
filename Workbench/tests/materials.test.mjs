@@ -26,7 +26,13 @@ function fixtureIndex() {
   return {
     generatedAt: "2026-07-27T08:00:00.000Z",
     documents: [
-      document(),
+      document({
+        domain: "AI与智能体",
+        topics: ["个人知识库", "MCP"],
+        contentKind: "方法",
+        useCases: ["项目", "学习"],
+        sourceType: "web-page",
+      }),
       document({
         id: "doc-2",
         path: "10_raw/articles/nested/two.md",
@@ -131,6 +137,32 @@ test("returns material home data with recent ordering and unavailable queued fil
   assert.equal(payload.queue[1].id, "missing-doc");
   assert.equal(payload.queue[1].available, false);
   assert.equal(payload.queue[1].title, "deleted");
+  assert.equal(payload.items.length, 4);
+  assert.equal(payload.classification.classified, 1);
+  assert.equal(payload.classification.unclassified, 3);
+  assert.equal(payload.classification.coveragePct, 25);
+  assert.equal(payload.classification.audit.length, 3);
+  assert.deepEqual(payload.classification.audit[0].missing, ["domain", "content_kind"]);
+  assert.deepEqual(payload.classification.domains, [
+    { value: "AI与智能体", count: 1 },
+  ]);
+  assert.deepEqual(payload.classification.topics, [
+    { value: "个人知识库", count: 1 },
+    { value: "MCP", count: 1 },
+  ]);
+  assert.deepEqual(payload.classification.contentKinds, [
+    { value: "方法", count: 1 },
+  ]);
+  assert.deepEqual(payload.classification.useCases, [
+    { value: "项目", count: 1 },
+    { value: "学习", count: 1 },
+  ]);
+  assert.equal(payload.p2Admission.totalRaw, 4);
+  assert.equal(payload.p2Admission.readyForDecision, true);
+  assert.equal(typeof payload.p2Admission.snapshotFingerprint, "string");
+  assert.equal(payload.p2Admission.snapshotFingerprint.length, 64);
+  assert.equal(payload.p2Admission.userDecisionRequired, true);
+  assert.equal(payload.p2Admission.automaticApproval, false);
 });
 
 test("returns folder breadcrumbs, child folders, and direct documents", () => {

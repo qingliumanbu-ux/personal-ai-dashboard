@@ -1,0 +1,980 @@
+/* Personal AI Studio V6 · unified color system
+   Cool neutral canvas + graphite work surfaces + one indigo accent. */
+
+:root {
+  --ui-canvas: #f5f6f8;
+  --ui-surface: #ffffff;
+  --ui-surface-muted: #f8f9fb;
+  --ui-surface-strong: #eef0f4;
+
+  --ui-sidebar: #111318;
+  --ui-sidebar-hover: #1b1e25;
+  --ui-sidebar-active: #232631;
+
+  --ui-text: #151821;
+  --ui-text-secondary: #667085;
+  --ui-text-tertiary: #98a0ae;
+  --ui-text-inverse: #f7f8fb;
+
+  --ui-border: #e7e9ee;
+  --ui-border-strong: #d7dbe3;
+
+  --ui-accent: #6f5cff;
+  --ui-accent-strong: #5b49e6;
+  --ui-accent-muted: #f1eeff;
+  --ui-success: #43c37b;
+  --ui-warning: #b7791f;
+  --ui-danger: #c84e5a;
+
+  --v6-graphite-0: #0e1015;
+  --v6-graphite-1: #111318;
+  --v6-graphite-2: #171a20;
+  --v6-graphite-3: #1c1f27;
+  --v6-graphite-4: #252934;
+  --v6-dark-border: #2a2e38;
+  --v6-dark-text: #f4f5f8;
+  --v6-dark-muted: #9aa2b2;
+  --v6-dark-faint: #6f7787;
+}
+
+html,
+body,
+#root {
+  background: var(--ui-canvas);
+}
+
+body {
+  color: var(--ui-text);
+}
+
+/* App shell */
+.sidebar {
+  background:
+    linear-gradient(180deg, #121419 0%, var(--ui-sidebar) 72%, #0f1116 100%);
+}
+
+.sidebar-search {
+  border-color: #2b2f38;
+  background: #191c22;
+  color: #b7bdc9;
+}
+
+.sidebar-search:hover,
+.sidebar-search:focus-visible {
+  border-color: #414755;
+  background: #1d2027;
+}
+
+.sidebar__tag,
+.sidebar__nav-label,
+.sidebar__nav-toggle {
+  color: #727a89;
+}
+
+.sidebar__nav-item {
+  color: #aeb5c1;
+}
+
+.sidebar__nav-item:hover {
+  background: var(--ui-sidebar-hover);
+  color: #f1f3f6;
+}
+
+.sidebar__nav-item--active {
+  background: var(--ui-sidebar-active);
+  color: #ffffff;
+}
+
+.sidebar__nav-item--active::before {
+  background: var(--ui-accent);
+  box-shadow: 0 0 12px rgba(111, 92, 255, 0.32);
+}
+
+.sidebar__secondary,
+.sidebar__bottom {
+  border-color: #252933;
+}
+
+.workspace-bar {
+  border-bottom-color: var(--ui-border);
+  background: rgba(248, 249, 251, 0.96);
+  color: var(--ui-text);
+}
+
+.workspace-bar__search {
+  border-color: #dfe2e8;
+  background: #ffffff;
+}
+
+.workspace-bar__search:hover {
+  border-color: #c7ccd6;
+  background: #ffffff;
+}
+
+/* Home command deck */
+.studio-dashboard {
+  border-color: var(--ui-border);
+  background: var(--ui-surface);
+}
+
+.studio-dashboard__head {
+  background:
+    radial-gradient(circle at var(--deck-x) var(--deck-y), rgba(111, 92, 255, 0.16), transparent 24%),
+    radial-gradient(circle at 92% 4%, rgba(77, 116, 196, 0.08), transparent 30%),
+    linear-gradient(118deg, #121419 0%, #151820 55%, #131821 100%);
+}
+
+.studio-dashboard__head::before {
+  background-image:
+    linear-gradient(rgba(143, 150, 164, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(143, 150, 164, 0.055) 1px, transparent 1px);
+  opacity: 0.34;
+}
+
+.studio-dashboard__head::after {
+  background: linear-gradient(90deg, transparent, rgba(111, 92, 255, 0.025), rgba(111, 92, 255, 0.10), rgba(111, 92, 255, 0.02), transparent);
+  opacity: 0.55;
+}
+
+.studio-dashboard__deck-id,
+.studio-dashboard__kicker {
+  color: #8b92a2;
+}
+
+.studio-dashboard__head h1 {
+  color: var(--v6-dark-text);
+  text-shadow: none;
+}
+
+.studio-dashboard__head p {
+  color: #b0b6c2;
+}
+
+.studio-dashboard__connection {
+  border-color: #2d323d;
+  background: rgba(23, 26, 32, 0.86);
+  color: #aab1bd;
+  box-shadow: none;
+}
+
+.studio-dashboard__connection.is-ready {
+  color: #8ed8ad;
+}
+
+.studio-dashboard__actions {
+  border-bottom-color: var(--ui-border);
+  background: #ffffff;
+}
+
+.studio-dashboard__actions > button {
+  border-right-color: var(--ui-border);
+  background: #ffffff;
+}
+
+.studio-dashboard__actions > button:hover {
+  background: #f8f8fc;
+  box-shadow: inset 0 -2px 0 rgba(111, 92, 255, 0.35);
+}
+
+.studio-dashboard__actions > button::before {
+  background: radial-gradient(circle at 18% 24%, rgba(111, 92, 255, 0.07), transparent 48%);
+}
+
+.studio-dashboard__action-icon {
+  border-color: #e5e3f4;
+  background: #f7f5ff;
+  color: var(--ui-accent);
+  box-shadow: none;
+}
+
+.studio-dashboard__pulse {
+  background:
+    radial-gradient(circle at 90% 10%, rgba(111, 92, 255, 0.08), transparent 32%),
+    linear-gradient(145deg, var(--v6-graphite-3), var(--v6-graphite-2));
+}
+
+.studio-dashboard__pulse-head,
+.studio-dashboard__pulse-grid,
+.studio-dashboard__pulse > button {
+  border-color: #2b2f39;
+}
+
+.studio-dashboard__pulse .eyebrow,
+.studio-dashboard__pulse-head > span,
+.studio-dashboard__pulse-grid span {
+  color: #858d9c;
+}
+
+.studio-dashboard__pulse-grid strong {
+  color: #f4f5f8;
+}
+
+/* Realtime core: same graphite family, quieter accent */
+.knowledge-core {
+  border-color: #2d3340;
+  background:
+    radial-gradient(circle at 52% 46%, rgba(111, 92, 255, 0.12), transparent 30%),
+    linear-gradient(145deg, rgba(25, 29, 38, 0.94), rgba(15, 18, 24, 0.94));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    0 10px 28px rgba(8, 10, 15, 0.16);
+}
+
+.knowledge-core:hover {
+  border-color: #3a4050;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 12px 30px rgba(8, 10, 15, 0.18);
+}
+
+.knowledge-core::before {
+  background-image:
+    linear-gradient(rgba(142, 150, 166, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(142, 150, 166, 0.03) 1px, transparent 1px);
+  opacity: 0.45;
+}
+
+.knowledge-core__halo {
+  background: radial-gradient(circle, rgba(111, 92, 255, 0.12), transparent 70%);
+}
+
+.knowledge-core__eyebrow,
+.knowledge-core__mode,
+.knowledge-core__footer,
+.knowledge-core__telemetry small {
+  color: #81899a;
+}
+
+.knowledge-core__focus {
+  border-color: #2a303a;
+  background: rgba(18, 21, 28, 0.86);
+}
+
+/* Evidence Observatory / Knowledge Atlas */
+.materials-observatory,
+.knowledge-atlas-hero {
+  border-color: var(--v6-dark-border);
+  background:
+    radial-gradient(circle at var(--observatory-x) var(--observatory-y), rgba(111, 92, 255, 0.14), transparent 28%),
+    radial-gradient(circle at 94% 4%, rgba(72, 113, 188, 0.07), transparent 30%),
+    linear-gradient(122deg, #121419 0%, #171a20 58%, #141920 100%);
+  box-shadow: 0 20px 54px rgba(26, 31, 41, 0.10);
+}
+
+.materials-observatory::before,
+.knowledge-atlas-hero::before {
+  background-image:
+    linear-gradient(rgba(142, 150, 166, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(142, 150, 166, 0.035) 1px, transparent 1px);
+  opacity: 0.55;
+}
+
+.materials-observatory h1,
+.knowledge-atlas-hero h1 {
+  color: #f5f6f8;
+}
+
+.materials-observatory__copy > p,
+.knowledge-atlas-hero__copy > p {
+  color: #abb2bf;
+}
+
+.materials-observatory__kicker,
+.knowledge-atlas-hero__kicker,
+.materials-observatory__metrics span,
+.knowledge-atlas-hero__facts span {
+  color: #7d8595;
+}
+
+.materials-observatory__kicker > span,
+.knowledge-atlas-hero__kicker > span {
+  background: linear-gradient(90deg, var(--ui-accent), transparent);
+  box-shadow: none;
+}
+
+.materials-observatory__metrics > div::before,
+.knowledge-atlas-hero__facts > div::before {
+  background: linear-gradient(to bottom, rgba(111, 92, 255, 0.62), rgba(111, 92, 255, 0.05));
+}
+
+.materials-observatory__metrics strong,
+.knowledge-atlas-hero__facts strong {
+  color: #f3f4f7;
+}
+
+.materials-observatory__actions button {
+  border-color: #353a45;
+  background: #f5f6f8;
+  color: #181b22;
+}
+
+.materials-observatory__actions button:hover {
+  border-color: #4a5060;
+  background: #ffffff;
+}
+
+.materials-observatory__actions button.is-secondary {
+  border-color: #303540;
+  background: rgba(255, 255, 255, 0.035);
+  color: #c0c6d1;
+}
+
+.materials-observatory__radar {
+  border-left-color: #292e38;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(111, 92, 255, 0.08), transparent 44%),
+    rgba(16, 19, 25, 0.22);
+}
+
+.evidence-radar__rings {
+  border-color: rgba(139, 126, 211, 0.20);
+  box-shadow:
+    0 0 0 35px rgba(111, 92, 255, 0.022),
+    0 0 0 70px rgba(111, 92, 255, 0.012),
+    inset 0 0 40px rgba(111, 92, 255, 0.04);
+}
+
+.evidence-radar__core {
+  border-color: #343846;
+  background: #171a21;
+  box-shadow: 0 0 34px rgba(111, 92, 255, 0.16);
+}
+
+.evidence-radar__node::before {
+  border-color: #d5d0ff;
+  background: var(--ui-accent);
+  box-shadow: 0 0 10px rgba(111, 92, 255, 0.38);
+}
+
+.evidence-radar__node,
+.evidence-radar__status {
+  color: #8d95a4;
+}
+
+/* Dark rails use the same graphite family */
+.page--materials .materials-facets,
+.collection-index {
+  border-color: #2b2f38;
+  background:
+    radial-gradient(circle at 0 0, rgba(111, 92, 255, 0.08), transparent 28%),
+    linear-gradient(180deg, #171a20, #15181e 58%, #13161b);
+}
+
+.page--materials .materials-facet-group button,
+.collection-index .group-card {
+  color: #a7afbc;
+}
+
+.page--materials .materials-facet-group button:hover,
+.collection-index .group-card:hover {
+  border-color: #343946;
+  background: #1d2027;
+  color: #eef0f4;
+}
+
+.page--materials .materials-facet-group button.is-active,
+.collection-index .group-card--on {
+  border-color: rgba(111, 92, 255, 0.34);
+  background: linear-gradient(90deg, rgba(111, 92, 255, 0.17), rgba(111, 92, 255, 0.045));
+  color: #f1efff;
+  box-shadow: inset 2px 0 0 var(--ui-accent);
+}
+
+/* Light data surfaces */
+.page--materials .materials-classified-results,
+.collection-workspace__surface,
+.collection-list,
+.material-row,
+.doc-row {
+  background-color: #ffffff;
+}
+
+.page--materials .materials-classified-results__head,
+.collection-list__head {
+  border-color: var(--ui-border);
+  background: rgba(248, 249, 251, 0.94);
+}
+
+.page--materials .material-row:hover,
+.page--collection .doc-row:hover {
+  background: linear-gradient(90deg, rgba(111, 92, 255, 0.035), #fafbfc 34%, #fafbfc);
+  box-shadow: inset 2px 0 0 rgba(111, 92, 255, 0.42);
+}
+
+/* Spatial graph */
+.graph-page-shell .graph-page.graph-page--immersive {
+  border-color: #dde1e8;
+  background:
+    radial-gradient(circle at 68% 18%, rgba(111, 92, 255, 0.05), transparent 30%),
+    linear-gradient(180deg, #fbfcfd, #f5f6f8);
+  box-shadow: 0 24px 60px rgba(37, 44, 58, 0.06);
+}
+
+.graph-page-shell .graph-page--immersive::before {
+  background-image:
+    radial-gradient(rgba(111, 92, 255, 0.10) 0.7px, transparent 0.7px),
+    linear-gradient(rgba(92, 101, 119, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(92, 101, 119, 0.025) 1px, transparent 1px);
+}
+
+.graph-page-shell .graph-lens,
+.graph-page-shell .graph-inspector,
+.graph-page-shell .knowledge-graph__controls {
+  border-color: rgba(214, 219, 228, 0.9);
+  background: rgba(250, 251, 252, 0.88);
+  box-shadow: 0 16px 42px rgba(35, 42, 55, 0.08);
+}
+
+/* Command center */
+.palette-backdrop {
+  background: rgba(17, 19, 24, 0.38);
+}
+
+.palette {
+  border-color: rgba(214, 218, 227, 0.9);
+  background:
+    radial-gradient(circle at 72% 0%, rgba(111, 92, 255, 0.055), transparent 25%),
+    rgba(252, 252, 253, 0.97);
+  box-shadow:
+    0 38px 100px rgba(19, 23, 31, 0.25),
+    0 8px 26px rgba(35, 41, 54, 0.10),
+    0 0 0 1px rgba(111, 92, 255, 0.08);
+}
+
+.palette__chrome {
+  background:
+    radial-gradient(circle at 12% 0%, rgba(111, 92, 255, 0.10), transparent 30%),
+    linear-gradient(110deg, #171a20, #1a1d24 58%, #15181e);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar__nav-item--active::before {
+    box-shadow: none;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* V6.1 Graphite Night · unify the entire app shell into one dark system       */
+/* -------------------------------------------------------------------------- */
+
+:root {
+  --ui-canvas: #0f1116;
+  --ui-surface: #15181f;
+  --ui-surface-muted: #191d24;
+  --ui-surface-strong: #20252e;
+
+  --ui-text: #eef1f6;
+  --ui-text-secondary: #aab2bf;
+  --ui-text-tertiary: #747e8d;
+  --ui-text-inverse: #f7f8fb;
+
+  --ui-border: #262b34;
+  --ui-border-strong: #343b47;
+  --ui-accent: #7565ff;
+  --ui-accent-strong: #8a7dff;
+  --ui-accent-muted: rgba(117, 101, 255, 0.12);
+}
+
+html,
+body,
+#root,
+.app-main {
+  background:
+    radial-gradient(circle at 78% 8%, rgba(117, 101, 255, 0.055), transparent 25%),
+    #0f1116;
+  color: var(--ui-text);
+}
+
+.workspace-bar {
+  border-bottom-color: #242933;
+  background: rgba(17, 20, 26, 0.96);
+  color: #e9edf3;
+  backdrop-filter: blur(18px) saturate(120%);
+}
+
+.workspace-bar__context > span,
+.workspace-bar__sync {
+  color: #737c8b;
+}
+
+.workspace-bar__search {
+  border-color: #2e3440;
+  background: #171b22;
+  color: #b5bdc9;
+}
+
+.workspace-bar__search:hover {
+  border-color: #414957;
+  background: #1b1f27;
+}
+
+.workspace-bar__search kbd {
+  border-color: #343a45;
+  background: #222731;
+  color: #8c95a4;
+}
+
+.studio-dashboard {
+  border-color: #282e38;
+  background: #14171d;
+  box-shadow: 0 22px 64px rgba(0, 0, 0, 0.18);
+}
+
+.studio-dashboard__actions {
+  border-bottom-color: #292f39;
+  background: #15181f;
+}
+
+.studio-dashboard__actions > button {
+  border-right-color: #292f39;
+  background: #15181f;
+  color: #e9edf3;
+}
+
+.studio-dashboard__actions > button:hover {
+  background: #1b1f27;
+  box-shadow: inset 0 -2px 0 rgba(117, 101, 255, 0.52);
+}
+
+.studio-dashboard__action-icon {
+  border-color: #343947;
+  background: #1d222b;
+  color: #9b90ff;
+}
+
+.studio-dashboard__action-copy small,
+.studio-dashboard__action-meta,
+.studio-dashboard__action-arrow {
+  color: #727c8b;
+}
+
+.studio-dashboard__grid,
+.studio-dashboard__queue,
+.studio-dashboard__recent {
+  background: #14171d;
+}
+
+.studio-dashboard__queue,
+.studio-dashboard__recent {
+  border-right-color: #292f39;
+}
+
+.studio-dashboard__section-head {
+  border-bottom-color: #292f39;
+  background: #181c23;
+}
+
+.studio-dashboard__section-head h2,
+.studio-dashboard__queue-list strong,
+.studio-dashboard__recent-copy strong {
+  color: #edf0f5;
+}
+
+.studio-dashboard__section-head > span,
+.studio-dashboard__queue-list small,
+.studio-dashboard__recent-copy small,
+.studio-dashboard__recent-list time {
+  color: #747d8d;
+}
+
+.studio-dashboard__queue-list > button,
+.studio-dashboard__recent-list > button {
+  border-bottom-color: #262c35;
+  color: #e8ecf2;
+}
+
+.studio-dashboard__queue-list > button:hover,
+.studio-dashboard__recent-list > button:hover {
+  background: #1a1e25;
+}
+
+.studio-dashboard__queue-value {
+  color: #9185ff;
+}
+
+.studio-dashboard__pulse {
+  border-left-color: #2a3039;
+  background:
+    radial-gradient(circle at 88% 10%, rgba(117, 101, 255, 0.08), transparent 34%),
+    #171a20;
+}
+
+.studio-dashboard__pulse-head,
+.studio-dashboard__pulse-grid,
+.studio-dashboard__pulse > button {
+  border-color: #2a3039;
+  background-color: transparent;
+}
+
+.overview-page [data-panel],
+.overview-page .panel,
+.overview-page .graph-preview {
+  border-color: #292f39;
+  background:
+    radial-gradient(circle at 82% 0%, rgba(117, 101, 255, 0.035), transparent 26%),
+    #15181f;
+  color: #e9edf3;
+  box-shadow: none;
+}
+
+.overview-page .panel__title,
+.overview-page [data-panel] h2,
+.overview-page [data-panel] h3 {
+  color: #edf0f5;
+}
+
+.overview-page [data-panel] p,
+.overview-page [data-panel] small,
+.overview-page [data-panel] .mono {
+  color: #788292;
+}
+
+.page--materials,
+.page--collection,
+.graph-page-shell {
+  color: #e9edf3;
+}
+
+.page--materials > .page-header,
+.page--collection > .page-header,
+.graph-page-shell > .page-header {
+  border-bottom-color: #2a3039;
+}
+
+.page-header__title,
+.page-header__description {
+  color: #edf0f5;
+}
+
+.page-header__description {
+  color: #909aa9;
+}
+
+.materials-observatory,
+.knowledge-atlas-hero {
+  border-color: #2b303a;
+  background:
+    radial-gradient(circle at var(--observatory-x) var(--observatory-y), rgba(117, 101, 255, 0.11), transparent 28%),
+    linear-gradient(122deg, #13161c 0%, #171a21 58%, #12171d 100%);
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.18);
+}
+
+.page--materials .materials-section--classification,
+.collection-index,
+.collection-workspace__surface,
+.collection-list,
+.page--materials .materials-classified-results {
+  border-color: #2a3039;
+  background: #15181f;
+  color: #e9edf3;
+  box-shadow: none;
+}
+
+.page--materials .materials-section--classification > .materials-section__head,
+.page--materials .materials-classified-results__head,
+.collection-list__head,
+.collection-list .doc-table__head {
+  border-color: #2a3039;
+  background: #181c23;
+  color: #8b95a4;
+  backdrop-filter: blur(14px);
+}
+
+.page--materials .materials-classified-results__head strong,
+.collection-list__head strong {
+  color: #eef1f6;
+}
+
+.page--materials .material-row,
+.page--collection .doc-row {
+  border-color: #272d36;
+  background: #15181f;
+  color: #e8ecf2;
+}
+
+.page--materials .material-row:hover,
+.page--collection .doc-row:hover {
+  background: linear-gradient(90deg, rgba(117, 101, 255, 0.08), #1a1e25 32%, #1a1e25);
+  box-shadow: inset 2px 0 0 rgba(117, 101, 255, 0.72);
+}
+
+.page--materials .material-row__identity strong,
+.page--collection .doc-row__title,
+.page--collection .doc-row__cell {
+  color: #e8ecf2;
+}
+
+.page--materials .material-row__identity > span,
+.page--materials .material-row__date,
+.page--materials .material-row__type,
+.page--collection .doc-row__sub,
+.page--collection .doc-row__date {
+  color: #778191;
+}
+
+.material-row__file-icon,
+.material-queue-button,
+.materials-filter,
+.materials-search,
+.materials-breadcrumbs button,
+.materials-section__link {
+  border-color: #303641;
+  background: #1a1e25;
+  color: #aeb7c4;
+}
+
+.material-queue-button:hover,
+.materials-filter:hover,
+.materials-section__link:hover {
+  border-color: #424a57;
+  background: #20252e;
+  color: #f0f2f6;
+}
+
+.collection-index,
+.page--materials .materials-facets {
+  background:
+    radial-gradient(circle at 0 0, rgba(117, 101, 255, 0.075), transparent 28%),
+    #12151b;
+}
+
+.collection-index__head,
+.collection-index__pulse {
+  border-color: #292f39;
+}
+
+.collection-index .group-card:hover,
+.page--materials .materials-facet-group button:hover {
+  border-color: #343b47;
+  background: #1b2028;
+}
+
+.knowledge-dossier {
+  border-color: #2d333e;
+  background:
+    radial-gradient(circle at 90% 0%, rgba(117, 101, 255, 0.045), transparent 28%),
+    #171a21;
+  color: #edf0f5;
+}
+
+.knowledge-dossier:hover {
+  border-color: rgba(117, 101, 255, 0.45);
+  background: #1b1f27;
+}
+
+.knowledge-dossier p,
+.knowledge-dossier__meta,
+.knowledge-dossier__tags span,
+.knowledge-dossier__type {
+  color: #7f8999;
+}
+
+.graph-page-shell .graph-page.graph-page--immersive {
+  border-color: #2b313b;
+  background:
+    radial-gradient(circle at 68% 18%, rgba(117, 101, 255, 0.055), transparent 30%),
+    #14171d;
+  box-shadow: none;
+}
+
+.graph-page-shell .graph-lens,
+.graph-page-shell .graph-inspector,
+.graph-page-shell .knowledge-graph__controls {
+  border-color: #303743;
+  background: rgba(24, 28, 35, 0.92);
+  color: #e8ecf2;
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.18);
+}
+
+.palette-backdrop {
+  background: rgba(6, 8, 12, 0.64);
+}
+
+.palette {
+  border-color: #343b47;
+  background:
+    radial-gradient(circle at 72% 0%, rgba(117, 101, 255, 0.06), transparent 24%),
+    rgba(20, 23, 29, 0.985);
+  color: #e9edf3;
+  box-shadow:
+    0 38px 100px rgba(0, 0, 0, 0.42),
+    0 0 0 1px rgba(117, 101, 255, 0.08);
+}
+
+.palette__input-row,
+.palette__filters,
+.palette__footer {
+  border-color: #2a3039;
+  background: #171a21;
+}
+
+.palette__input,
+.palette select {
+  color: #e9edf3;
+  background: #1b1f27;
+}
+
+.palette__command-list > button,
+.palette__item {
+  border-color: #2b313b;
+  background: #15181f;
+  color: #e7ebf1;
+}
+
+.palette__command-list > button:hover,
+.palette__command-list > button:focus-visible,
+.palette__item--active {
+  background: #1d222b;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Ingestion Desk · light reading surfaces inside the dark application shell  */
+/* -------------------------------------------------------------------------- */
+
+.page--ingestion .ingestion-cockpit,
+.page--ingestion .ingestion-workspace {
+  --surface: #ffffff;
+  --surface-sunken: #f4f6f8;
+  --ink: #171a20;
+  --ink-soft: #5f6875;
+  --ink-faint: #8993a2;
+  --line: #e3e7ed;
+  --line-strong: #d2d8e1;
+  --accent: #7565ff;
+  --accent-strong: #5f50db;
+  --accent-soft: #c8c2ff;
+  --accent-wash: #f1efff;
+  --ingestion-signal: #7565ff;
+  --ingestion-signal-deep: #5b4ed0;
+  --ingestion-signal-soft: #c7c1ff;
+  --ingestion-signal-wash: #f2f0ff;
+  --ingestion-graphite: #171a20;
+}
+
+.page--ingestion .ingestion-workspace {
+  border-color: #343a45;
+  background: #ffffff;
+  box-shadow: 0 20px 54px rgba(0, 0, 0, 0.18);
+}
+
+.page--ingestion .ingestion-queue {
+  border-right-color: #dfe4eb;
+  background: #f5f7f9;
+  color: #171a20;
+}
+
+.page--ingestion .ingestion-queue__head,
+.page--ingestion .ingestion-job-list {
+  border-color: #e1e5eb;
+}
+
+.page--ingestion .ingestion-job {
+  border-bottom-color: #e1e5eb;
+  color: #5f6875;
+}
+
+.page--ingestion .ingestion-job:hover,
+.page--ingestion .ingestion-job.is-active {
+  background: #ffffff;
+}
+
+.page--ingestion .ingestion-job__body strong,
+.page--ingestion .ingestion-queue__head h2,
+.page--ingestion .ingestion-detail__head h2,
+.page--ingestion .ingestion-section-title h3,
+.page--ingestion .ingestion-capture-context__title,
+.page--ingestion .ingestion-retention__options strong {
+  color: #171a20;
+}
+
+.page--ingestion .ingestion-job__body span,
+.page--ingestion .ingestion-job time,
+.page--ingestion .ingestion-detail__path,
+.page--ingestion .ingestion-detail__head > time,
+.page--ingestion .ingestion-publish dt,
+.page--ingestion .ingestion-retention__options small {
+  color: #7d8796;
+}
+
+.page--ingestion .ingestion-detail {
+  background: #ffffff;
+  color: #20242c;
+}
+
+.page--ingestion .ingestion-flow,
+.page--ingestion .ingestion-capture-context,
+.page--ingestion .ingestion-transcript pre {
+  border-color: #e0e4ea;
+  background: #f6f8fa;
+  color: #20242c;
+}
+
+.page--ingestion .ingestion-flow__track {
+  background: #d8dde5;
+}
+
+.page--ingestion .ingestion-flow__step {
+  color: #7d8796;
+}
+
+.page--ingestion .ingestion-flow__step > span {
+  border-color: #cfd5de;
+  background: #f6f8fa;
+}
+
+.page--ingestion .ingestion-flow__step.is-active,
+.page--ingestion .ingestion-flow__step.is-done,
+.page--ingestion .ingestion-flow__readout strong,
+.page--ingestion .ingestion-section-title > span,
+.page--ingestion .eyebrow {
+  color: #6656df;
+}
+
+.page--ingestion .ingestion-flow__readout {
+  border-top-color: #dfe4eb;
+  color: #596270;
+}
+
+.page--ingestion .ingestion-review,
+.page--ingestion .ingestion-summary,
+.page--ingestion .ingestion-publish,
+.page--ingestion .ingestion-retention,
+.page--ingestion .ingestion-transcript,
+.page--ingestion .ingestion-images {
+  border-color: #d9dee6;
+  background: #ffffff;
+  color: #20242c;
+  box-shadow: 0 8px 24px rgba(26, 31, 41, 0.05);
+}
+
+.page--ingestion .ingestion-published,
+.page--ingestion .ingestion-retention__status {
+  border-color: #c7c1ff;
+  background: #f2f0ff;
+  color: #5548c5;
+}
+
+.page--ingestion .ingestion-published span,
+.page--ingestion .ingestion-retention__status span {
+  color: #596270;
+}
+
+.page--ingestion textarea,
+.page--ingestion input,
+.page--ingestion select {
+  border-color: #d7dde5;
+  background: #ffffff;
+  color: #1c2028;
+}
+
+.page--ingestion textarea::placeholder,
+.page--ingestion input::placeholder {
+  color: #9aa3b0;
+}
+
+.page--ingestion textarea:focus,
+.page--ingestion input:focus,
+.page--ingestion select:focus {
+  border-color: #8d81ff;
+  box-shadow: 0 0 0 3px rgba(117, 101, 255, 0.12);
+}

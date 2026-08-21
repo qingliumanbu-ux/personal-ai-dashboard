@@ -921,7 +921,7 @@ export function createReaderExplanationsService({
     ) || null;
   }
 
-  async function codexExecutable() {
+  async function codexCommand() {
     const detected = await detectImpl();
     if (!detected?.available || !detected.executablePath) {
       fail(
@@ -930,11 +930,11 @@ export function createReaderExplanationsService({
         { checked: detected?.checked || [] },
       );
     }
-    return detected.executablePath;
+    return detected;
   }
 
   async function executeOnce(prompt, signal) {
-    const executable = await codexExecutable();
+    const command = await codexCommand();
     const temporaryDirectory = await mkdtemp(
       path.join(os.tmpdir(), "workbench-reader-explanation-"),
     );
@@ -964,8 +964,8 @@ export function createReaderExplanationsService({
         "-",
       ];
       const completed = await runCommand({
-        executable,
-        args,
+        executable: command.executablePath,
+        args: [...(command.argsPrefix ?? []), ...args],
         cwd: temporaryDirectory,
         input: prompt,
         timeoutMs,

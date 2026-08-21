@@ -51,11 +51,14 @@ test("personal AI Vault layout maps existing source, candidate, and formal knowl
     fs.mkdir(path.join(vaultRoot, "04-来源资料", "视频"), { recursive: true }),
     fs.mkdir(path.join(vaultRoot, "05-候选知识"), { recursive: true }),
     fs.mkdir(path.join(vaultRoot, "06-正式知识"), { recursive: true }),
+    fs.mkdir(path.join(vaultRoot, "08-智能体运行", "ingest_plans"), { recursive: true }),
   ]);
   await Promise.all([
     fs.writeFile(path.join(vaultRoot, "04-来源资料", "视频", "来源.md"), "# 来源\n"),
     fs.writeFile(path.join(vaultRoot, "05-候选知识", "候选.md"), "# 候选\n"),
-    fs.writeFile(path.join(vaultRoot, "06-正式知识", "正式知识.md"), "# 正式知识\n"),
+    fs.writeFile(path.join(vaultRoot, "06-正式知识", "正式知识.md"), "# 正式知识\n\n[[关联知识]]\n"),
+    fs.writeFile(path.join(vaultRoot, "06-正式知识", "关联知识.md"), "# 关联知识\n"),
+    fs.writeFile(path.join(vaultRoot, "08-智能体运行", "ingest_plans", "private.md"), "# Hidden run\n"),
   ]);
 
   const index = await buildVaultIndex(vaultRoot, {
@@ -65,7 +68,10 @@ test("personal AI Vault layout maps existing source, candidate, and formal knowl
   assert.equal(index.layout.id, "personal-ai-vault-v1");
   assert.equal(index.layout.roots.raw, "04-来源资料");
   assert.equal(index.stats.rawFiles, 1);
-  assert.equal(index.stats.formalWikiPages, 1);
+  assert.equal(index.stats.formalWikiPages, 2);
+  assert.equal(index.documents.some((document) => document.path.startsWith("08-智能体运行/")), false);
+  const formal = index.documents.find((document) => document.path === "06-正式知识/正式知识.md");
+  assert.equal(formal.wikiLinks[0]?.resolvedId, index.documents.find((document) => document.path === "06-正式知识/关联知识.md")?.id);
   assert.equal(
     index.documents.find((document) => document.path === "05-候选知识/候选.md")?.layer,
     "candidate",

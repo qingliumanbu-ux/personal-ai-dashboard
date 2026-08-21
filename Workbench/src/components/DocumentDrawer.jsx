@@ -11,6 +11,7 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { motion } from "motion/react";
+import { useNavigate } from "react-router-dom";
 import {
   IconArrowLeft,
   IconArrowRight,
@@ -19,6 +20,7 @@ import {
   IconExternalLink,
   IconFileBroken,
   IconFolder,
+  IconHome,
   IconLink,
   IconList,
   IconQuote,
@@ -86,6 +88,7 @@ function basenameWithoutExtension(value = "") {
 }
 
 export function DocumentDrawer({ documentId, onClose, onNavigateDocument, readingContext }) {
+  const navigate = useNavigate();
   const [trail, setTrail] = useState([]);
   const [state, setState] = useState({ loading: false, data: null, error: null });
   const [notice, setNotice] = useState(null);
@@ -205,6 +208,12 @@ export function DocumentDrawer({ documentId, onClose, onNavigateDocument, readin
     flushBookProgress();
     if (await flushBeforeTransition()) onClose();
   }, [flushBeforeTransition, flushBookProgress, onClose]);
+  const handleReturnHome = useCallback(async () => {
+    flushBookProgress();
+    if (!(await flushBeforeTransition())) return;
+    onClose();
+    navigate("/");
+  }, [flushBeforeTransition, flushBookProgress, navigate, onClose]);
   const handleCloseRef = useRef(handleClose);
   handleCloseRef.current = handleClose;
 
@@ -853,8 +862,15 @@ export function DocumentDrawer({ documentId, onClose, onNavigateDocument, readin
     if (!active?.id) return;
     try {
       await openLocalTarget(active.id, target);
+      setNotice({
+        type: "success",
+        message: target === "obsidian" ? "已请求在 Obsidian 打开。" : "已请求在文件夹中定位。",
+      });
     } catch (error) {
-      setNotice({ type: "error", message: "无法调用本地应用，请确认工作台服务仍在运行。" });
+      setNotice({
+        type: "error",
+        message: error?.message || "无法调用本地应用，请确认工作台服务仍在运行。",
+      });
     }
   }, [active?.id]);
 
@@ -922,6 +938,15 @@ export function DocumentDrawer({ documentId, onClose, onNavigateDocument, readin
         </div>
 
         <div className="reader__actions">
+          <button
+            className="reader__home"
+            onClick={handleReturnHome}
+            title="关闭阅读器并返回主页"
+            type="button"
+          >
+            <IconHome aria-hidden="true" />
+            <span>主页</span>
+          </button>
           {currentDocument ? (
             <>
               {currentDocument.layer === "raw" ? (
@@ -950,8 +975,8 @@ export function DocumentDrawer({ documentId, onClose, onNavigateDocument, readin
                 className="icon-button"
                 onClick={() => handleOpen("finder")}
                 type="button"
-                aria-label="在 Finder 显示"
-                title="在 Finder 显示"
+                aria-label="在文件夹中定位"
+                title="在文件夹中定位"
               >
                 <IconFolder aria-hidden="true" />
               </button>

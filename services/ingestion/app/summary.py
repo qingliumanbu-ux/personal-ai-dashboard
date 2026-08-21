@@ -3,7 +3,8 @@ from __future__ import annotations
 import re
 
 
-SUMMARY_PROMPT_VERSION = "manual-v1"
+SUMMARY_PROMPT_VERSION = "manual-v2"
+LEGACY_SUMMARY_PROMPT_VERSION = "manual-v1"
 MAX_SOURCE_CHARACTERS = 160_000
 MAX_SUMMARY_CHARACTERS = 30_000
 REQUIRED_SUMMARY_HEADINGS = (
@@ -12,6 +13,12 @@ REQUIRED_SUMMARY_HEADINGS = (
     "## 建议标签",
     "## 可复用方向",
     "## 不确定内容",
+)
+
+CLASSIFICATION_SUMMARY_HEADINGS = (
+    "## 建议领域",
+    "## 建议内容类型",
+    "## 建议用途",
 )
 
 
@@ -46,7 +53,7 @@ source_sha256: {source_sha256}
 - 只能依据资料正文总结，不补充外部事实，不把推测写成结论。
 - 转写错误、证据不足、时效性或无法确认的信息必须放入“不确定内容”。
 - 只输出 Markdown，不要代码围栏、YAML Frontmatter、开场白或结束语。
-- 严格按以下五个二级标题和顺序输出：
+- 严格按以下八个二级标题和顺序输出：
 
 ## AI 候选摘要
 
@@ -67,6 +74,18 @@ source_sha256: {source_sha256}
 ## 不确定内容
 
 列出转写疑点、证据缺口、时效风险或需要人工复核的内容；确实没有时写“暂未发现”。
+
+## 建议领域
+
+只能从以下顶层领域中选择 1 个并原样输出：AI与智能体、程序开发、自媒体、AI视频、小说剧本、学习考试、个人成长、其他。不要自行创造新的顶层领域。
+
+## 建议内容类型
+
+只能从以下类型中选择 1 个并原样输出：方法、教程、案例、观点、数据、清单、参考资料。
+
+## 建议用途
+
+从以下用途选择 0～3 个，每行一个：项目、学习、内容创作、决策、复盘。没有可靠用途时写“待人工补充”。
 
 --- 待分析资料开始 ---
 {normalized_source}
@@ -92,4 +111,32 @@ def validate_candidate_summary(content: str) -> str:
         positions.append(matches[0].start())
     if positions != sorted(positions):
         raise SummaryValidationError("AI 候选摘要章节必须使用固定顺序。")
+
+    classification_matches = [
+        list(re.finditer(rf"^{re.escape(heading)}\s*$", normalized, re.MULTILINE))
+        for heading in CLASSIFICATION_SUMMARY_HEADINGS
+    ]
+    present = [bool(matches) for matches in classification_matches]
+    if any(present) and not all(present):
+        raise SummaryValidationError("分类候选章节必须完整包含建议领域、建议内容类型和建议用途。")
+    if all(present):
+        classification_positions = []
+        for heading, matches in zip(CLASSIFICATION_SUMMARY_HEADINGS, classification_matches):
+            if len(matches) != 1:
+                raise SummaryValidationError(f"章节只能出现一次：{heading}")
+            classification_positions.append(matches[0].start())
+        if classification_positions != sorted(classification_positions):
+            raise SummaryValidationError("分类候选章节必须使用固定顺序。")
+        if classification_positions[0] < positions[-1]:
+            raise SummaryValidationError("分类候选章节必须位于不确定内容之后。")
     return normalized
+
+
+def candidate_summary_prompt_version(content: str) -> str:
+    normalized = validate_candidate_summary(content)
+    if all(
+        re.search(rf"^{re.escape(heading)}\s*$", normalized, re.MULTILINE)
+        for heading in CLASSIFICATION_SUMMARY_HEADINGS
+    ):
+        return SUMMARY_PROMPT_VERSION
+    return LEGACY_SUMMARY_PROMPT_VERSION

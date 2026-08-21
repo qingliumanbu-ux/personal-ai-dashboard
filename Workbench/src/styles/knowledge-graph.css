@@ -920,3 +920,308 @@
     transform: none;
   }
 }
+
+/* ============================================================
+   STUDIO UI V4 · Graph work surface
+   The graph keeps its spatial character while sharing the same
+   compact graphite chrome and indexed controls as the Workbench.
+   ============================================================ */
+
+.graph-page-shell {
+  width: min(100%, 1480px);
+  margin-inline: auto;
+}
+
+.graph-page-shell > .page-header {
+  margin-bottom: 14px;
+}
+
+.graph-page.graph-page--immersive {
+  height: calc(100vh - 176px);
+  min-height: 620px;
+  border-radius: 9px;
+  background-color: #f9f9f7;
+  box-shadow: none;
+}
+
+.graph-page--immersive::before {
+  background-image: radial-gradient(rgba(116, 87, 255, 0.12) 0.65px, transparent 0.65px);
+  background-size: 20px 20px;
+  opacity: 0.34;
+}
+
+.graph-page--immersive::after {
+  display: none;
+}
+
+.graph-stage__identity {
+  top: 12px;
+  left: 12px;
+  width: 235px;
+  padding: 9px 10px 10px;
+  border: 1px solid #303036;
+  border-radius: 7px;
+  background: rgba(28, 28, 32, 0.96);
+  box-shadow: 0 8px 24px rgba(18, 18, 21, 0.12);
+}
+
+.graph-stage__live-row {
+  color: #777780;
+  font-size: 8px;
+}
+
+.graph-stage__totals {
+  gap: 10px;
+  margin-top: 6px;
+  color: #a0a0a8;
+  font-size: 9.5px;
+}
+
+.graph-stage__totals b {
+  color: #f4f4f5;
+  font-size: 12px;
+}
+
+.graph-stage__identity p {
+  margin-top: 4px;
+  color: #686870;
+  font-size: 8.5px;
+}
+
+.graph-search-shell {
+  top: 12px;
+  width: min(360px, calc(100% - 560px));
+  height: 36px;
+  padding: 0 8px 0 10px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 4px 16px rgba(18, 18, 21, 0.07);
+}
+
+.graph-search-shell:focus-within {
+  border-color: #cfc9f2;
+  box-shadow: 0 0 0 2px rgba(116, 87, 255, 0.08);
+}
+
+.graph-search-shell input {
+  font-size: 10.5px;
+}
+
+.graph-search-results {
+  top: calc(100% + 6px);
+  padding: 4px;
+  border-radius: 7px;
+  box-shadow: 0 16px 38px rgba(18, 18, 21, 0.13);
+}
+
+.graph-search-results > button {
+  padding: 7px 8px;
+  border-radius: 5px;
+}
+
+.graph-overlay {
+  border-color: var(--line-strong);
+  background: rgba(251, 251, 250, 0.98);
+  box-shadow: 0 10px 28px rgba(18, 18, 21, 0.08);
+}
+
+.graph-overlay__head strong {
+  font-size: 13px;
+}
+
+.graph-overlay__kicker,
+.graph-lens__label {
+  color: var(--ink-faint);
+  font-size: 7.5px;
+}
+
+.graph-lens {
+  top: 62px;
+  bottom: 12px;
+  left: 12px;
+  width: 232px;
+  padding: 12px;
+  border-radius: 8px;
+}
+
+.graph-lens__summary {
+  margin-top: 12px;
+  padding: 7px 0;
+  font-size: 7.5px;
+}
+
+.graph-lens__section {
+  margin-top: 13px;
+}
+
+.graph-lens__options button {
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 5px;
+  font-size: 10px;
+}
+
+.graph-lens__options button.is-active {
+  border-color: #d7d1f6;
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.graph-lens__status-options {
+  gap: 4px;
+}
+
+.graph-lens__status-options button {
+  padding: 4px 6px;
+  border-radius: 5px;
+  font-size: 9px;
+}
+
+.graph-lens__footnote {
+  margin-top: 13px;
+  padding-top: 9px;
+  font-size: 8.5px;
+}
+
+.graph-lens-toggle {
+  bottom: 12px;
+  left: 12px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 7px;
+  font-size: 9.5px;
+}
+
+.graph-inspector {
+  top: 62px;
+  right: 12px;
+  bottom: 54px;
+  width: 326px;
+  padding: 14px;
+  border-top-width: 1px;
+  border-radius: 8px;
+}
+
+.graph-inspector h2 {
+  margin-top: 13px;
+  font-size: 16px;
+}
+
+.graph-inspector__meta {
+  margin-top: 8px;
+}
+
+.graph-inspector__meta span,
+.graph-inspector__tags span {
+  padding: 3px 5px;
+  border-radius: 5px;
+  font-size: 7.5px;
+}
+
+.graph-inspector__stats {
+  gap: 4px;
+  margin-top: 11px;
+}
+
+.graph-inspector__stats div {
+  padding: 8px 4px 7px;
+  border-radius: 6px;
+  background: #f3f3f0;
+}
+
+.graph-inspector__stats b {
+  font-size: 16px;
+}
+
+.graph-inspector__open {
+  margin-top: 11px;
+  padding: 8px 9px;
+  border-radius: 6px;
+  background: #202023;
+  font-size: 9.5px;
+}
+
+.graph-inspector__open:hover {
+  background: #303034;
+  transform: none;
+}
+
+.graph-inspector__relations-head {
+  margin-top: 16px;
+  padding-bottom: 6px;
+}
+
+.graph-inspector__relations > button {
+  padding: 7px 5px;
+  border-radius: 5px;
+}
+
+.graph-inspector__relations > button:hover {
+  background: #f4f4f1;
+  transform: none;
+}
+
+.knowledge-graph__controls {
+  bottom: 12px;
+  min-height: 36px;
+  padding: 3px;
+  border-radius: 7px;
+  box-shadow: 0 6px 18px rgba(18, 18, 21, 0.08);
+}
+
+.knowledge-graph__controls button {
+  width: 29px;
+  height: 28px;
+  border-radius: 5px;
+  transition: color 140ms var(--ease), background 140ms var(--ease);
+}
+
+.knowledge-graph__controls button:hover {
+  color: var(--accent-strong);
+  background: var(--accent-wash);
+  transform: none;
+}
+
+.graph-stage__prompt {
+  right: 12px;
+  bottom: 54px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  background: rgba(251, 251, 250, 0.9);
+  font-size: 8.5px;
+}
+
+@media (max-width: 860px) {
+  .graph-page.graph-page--immersive {
+    height: calc(100svh - 150px);
+    border-radius: 8px;
+  }
+}
+
+@media (max-width: 760px) {
+  .graph-page.graph-page--immersive {
+    height: calc(100svh - 124px);
+    min-height: 650px;
+  }
+
+  .graph-search-shell {
+    top: 10px;
+    right: 10px;
+    left: 10px;
+  }
+
+  .graph-stage__identity {
+    top: 56px;
+    left: 10px;
+  }
+
+  .graph-lens,
+  .graph-inspector {
+    right: 10px;
+    left: 10px;
+    border-radius: 8px;
+  }
+
+  .graph-lens-toggle {
+    left: 10px;
+  }
+}

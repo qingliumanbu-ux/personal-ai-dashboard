@@ -761,6 +761,62 @@ class JobQueue:
             item for item in self.list_artifacts(job_id) if item.kind == "candidate_summary"
         )
 
+    def save_classification(self, job_id: str, payload: dict[str, object]) -> Artifact:
+        job = self.get(job_id)
+        if job.status not in {"waiting_review", "succeeded"}:
+            raise ValueError(f"Job in {job.status} cannot accept classification")
+        if self.get_publication(job_id) is not None:
+            raise ValueError("Published jobs cannot replace their classification")
+
+        job.output_dir.mkdir(parents=True, exist_ok=True)
+        target = job.output_dir / "classification.json"
+        temporary = job.output_dir / f".classification.{uuid4().hex}.tmp"
+        try:
+            temporary.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+            os.replace(temporary, target)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+        artifact = self._build_artifact(job, "classification", target)
+        now = datetime.now(UTC).isoformat()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                """
+                INSERT INTO artifacts (id, job_id, kind, path, size, sha256)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(job_id, kind) DO UPDATE SET
+                    path = excluded.path,
+                    size = excluded.size,
+                    sha256 = excluded.sha256
+                """,
+                (
+                    artifact.id,
+                    artifact.job_id,
+                    artifact.kind,
+                    str(artifact.path),
+                    artifact.size,
+                    artifact.sha256,
+                ),
+            )
+            connection.execute(
+                "UPDATE jobs SET updated_at = ? WHERE id = ?",
+                (now, job_id),
+            )
+            self._insert_event(
+                connection,
+                job_id,
+                "classification_saved",
+                {"sha256": artifact.sha256, "size": artifact.size},
+            )
+        return next(
+            item for item in self.list_artifacts(job_id) if item.kind == "classification"
+        )
+
     def list_attempts(self, job_id: str) -> list[Attempt]:
         self.get(job_id)
         with self._connect() as connection:

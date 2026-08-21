@@ -387,11 +387,11 @@ async function resolveVaultRoot(vaultRoot) {
   return resolved;
 }
 
-async function ensureSafeStorageDirectory(vaultRoot) {
+async function ensureSafeStorageDirectory(vaultRoot, notesDirectory = READER_NOTES_DIRECTORY) {
   const realVaultRoot = await resolveVaultRoot(vaultRoot);
   let parent = realVaultRoot;
 
-  for (const segment of READER_NOTES_DIRECTORY.split("/")) {
+  for (const segment of notesDirectory.split("/")) {
     const candidate = path.join(parent, segment);
     let details;
     try {
@@ -433,9 +433,9 @@ async function assertSafeStoreTarget(targetPath) {
   }
 }
 
-async function readStore(vaultRoot) {
-  const { outputDirectory } = await ensureSafeStorageDirectory(vaultRoot);
-  const targetPath = path.join(outputDirectory, path.basename(READER_NOTES_STORE));
+async function readStore(vaultRoot, notesDirectory = READER_NOTES_DIRECTORY) {
+  const { outputDirectory } = await ensureSafeStorageDirectory(vaultRoot, notesDirectory);
+  const targetPath = path.join(outputDirectory, ".workbench-reader-notes.json");
   await assertSafeStoreTarget(targetPath);
 
   let raw;
@@ -524,6 +524,7 @@ async function writeStore(targetPath, data) {
  */
 export function createReaderNotesRepository({
   vaultRoot = DEFAULT_VAULT_ROOT,
+  notesDirectory = READER_NOTES_DIRECTORY,
   now = () => new Date(),
   makeId = randomUUID,
 } = {}) {
@@ -543,7 +544,7 @@ export function createReaderNotesRepository({
   return Object.freeze({
     async list() {
       return afterPendingMutations(async () => {
-        const { data } = await readStore(vaultRoot);
+        const { data } = await readStore(vaultRoot, notesDirectory);
         return clone(
           [...data.documents].sort(
             (left, right) =>
@@ -557,7 +558,7 @@ export function createReaderNotesRepository({
     async get(documentId) {
       const safeDocumentId = normalizeIdentifier(documentId, "文档 ID");
       return afterPendingMutations(async () => {
-        const { data } = await readStore(vaultRoot);
+        const { data } = await readStore(vaultRoot, notesDirectory);
         const document = data.documents.find(
           (item) => item.documentId === safeDocumentId,
         );
@@ -568,7 +569,7 @@ export function createReaderNotesRepository({
     async save(document) {
       return enqueueMutation(async () => {
         const timestamp = nowIso(now);
-        const { targetPath, data } = await readStore(vaultRoot);
+        const { targetPath, data } = await readStore(vaultRoot, notesDirectory);
         const requestedDocumentId = normalizeIdentifier(
           document?.documentId ?? document?.id,
           "文档 ID",
@@ -618,7 +619,7 @@ export function createReaderNotesRepository({
     async delete(documentId) {
       const safeDocumentId = normalizeIdentifier(documentId, "文档 ID");
       return enqueueMutation(async () => {
-        const { targetPath, data } = await readStore(vaultRoot);
+        const { targetPath, data } = await readStore(vaultRoot, notesDirectory);
         const nextDocuments = data.documents.filter(
           (item) => item.documentId !== safeDocumentId,
         );
@@ -824,6 +825,7 @@ export async function createIngestSnapshot(
   notes = document?.notes,
   {
     vaultRoot = DEFAULT_VAULT_ROOT,
+    notesDirectory = READER_NOTES_DIRECTORY,
     jobId = randomUUID(),
     now = new Date(),
     occurrence = {},
@@ -837,7 +839,7 @@ export async function createIngestSnapshot(
   );
 
   const { realVaultRoot, outputDirectory } =
-    await ensureSafeStorageDirectory(vaultRoot);
+    await ensureSafeStorageDirectory(vaultRoot, notesDirectory);
   const date = formatShanghaiDate(timestamp);
   const slug = sanitizeFilenamePart(normalized.title, "reading-notes");
   const jobSlug = sanitizeFilenamePart(safeJobId, "job").slice(0, 16);

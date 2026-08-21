@@ -17,7 +17,7 @@ class IngestionConfig:
     model_dir: Path
     vault_root: Path
     host: str = "127.0.0.1"
-    port: int = 8765
+    port: int = 8766
 
     @classmethod
     def from_environment(cls) -> "IngestionConfig":
@@ -69,7 +69,7 @@ class IngestionConfig:
                 )
             ).expanduser(),
             host=os.environ.get("PERSONAL_DASHBOARD_INGESTION_HOST", "127.0.0.1"),
-            port=int(os.environ.get("PERSONAL_DASHBOARD_INGESTION_PORT", "8765")),
+            port=int(os.environ.get("PERSONAL_DASHBOARD_INGESTION_PORT", "8766")),
         )
 
     @classmethod

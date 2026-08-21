@@ -89,6 +89,31 @@ test("maps changed paths to the smallest relevant invalidation scopes", () => {
   );
 });
 
+test("maps personal-ai-vault-v1 roots without falling back to legacy directory names", () => {
+  const roots = {
+    raw: "04-来源资料",
+    wiki: "06-正式知识",
+    topics: "03-领域",
+    scripts: "07-创作输出",
+    runs: "08-智能体运行",
+    selfMedia: null,
+  };
+  assert.deepEqual(
+    affectedScopesForPaths(["06-正式知识/正式知识索引.md"], roots),
+    ["graph", "overview", "recent", "runtime", "search", "wiki"],
+  );
+  assert.deepEqual(
+    affectedScopesForPaths([
+      "04-来源资料/my-thoughts/reading-notes/.workbench-material-reading-state.json",
+    ], roots),
+    ["materials", "overview", "reading_queue", "recent", "runtime", "search"],
+  );
+  assert.deepEqual(
+    affectedScopesForPaths(["08-智能体运行/ingest_plans/run.md"], roots),
+    ["archive", "recent", "runtime", "search"],
+  );
+});
+
 test("coalesces filesystem changes and publishes one indexed snapshot", async (t) => {
   const buildCalls = [];
   const clearedTimers = [];

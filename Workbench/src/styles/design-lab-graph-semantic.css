@@ -1,0 +1,452 @@
+/* V7.7 · Semantic graph zoom
+   Overview -> Cluster -> Focus. Keeps large knowledge graphs readable by changing density per scale. */
+
+.design-lab-graph-mode-switch {
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 10px;
+  background: rgba(232, 235, 240, 0.78);
+  box-shadow: inset 0 0 0 1px rgba(211, 215, 222, 0.8);
+}
+
+.design-lab-graph-mode-switch button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--lab-text-3);
+  font-size: 10px;
+  transition: background 150ms ease, color 150ms ease, box-shadow 150ms ease;
+}
+
+.design-lab-graph-mode-switch button.is-active {
+  background: #fff;
+  color: var(--lab-text);
+  box-shadow: 0 4px 12px rgba(33, 38, 47, 0.07), inset 0 0 0 1px rgba(208, 212, 219, 0.72);
+}
+
+.design-lab-graph-stage {
+  border: 0;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 22px 58px rgba(37, 42, 52, 0.065), inset 0 0 0 1px rgba(216, 220, 227, 0.74);
+}
+
+.design-lab-graph-stage__toolbar {
+  grid-template-columns: minmax(220px, auto) minmax(0, 1fr) auto;
+  min-height: 56px;
+  padding: 0 16px;
+  background: rgba(250, 251, 252, 0.86);
+}
+
+.design-lab-graph-breadcrumb {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  color: var(--lab-text-3);
+  font-size: 9.5px;
+}
+
+.design-lab-graph-breadcrumb button {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--lab-text-2);
+}
+
+.design-lab-graph-breadcrumb button:hover {
+  background: #fff;
+}
+
+.design-lab-graph-breadcrumb strong {
+  overflow: hidden;
+  color: #323741;
+  font-size: 9.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.design-lab-graph-scale-copy {
+  display: grid;
+  min-width: 0;
+  justify-items: center;
+  gap: 2px;
+}
+
+.design-lab-graph-scale-copy strong {
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.design-lab-graph-scale-copy small,
+.design-lab-graph-zoom-note {
+  color: var(--lab-text-3);
+  font-size: 8.8px;
+}
+
+.design-lab-graph-zoom-note {
+  font-family: "JetBrains Mono", monospace;
+  letter-spacing: 0.08em;
+}
+
+.design-lab-semantic-canvas {
+  position: relative;
+  height: min(61vh, 560px);
+  min-height: 420px;
+  overflow: hidden;
+  border-radius: 0 0 18px 18px;
+  background:
+    radial-gradient(circle at 52% 46%, rgba(104, 87, 223, 0.055), transparent 30%),
+    linear-gradient(180deg, #fbfbfc 0%, #f7f8fb 100%);
+}
+
+.lab-wb-cosmos--semantic .lab-wb-starfield {
+  opacity: 0.5;
+  mix-blend-mode: multiply;
+}
+
+.design-lab-semantic-canvas > :not(.lab-wb-starfield) {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+}
+
+.design-lab-graph-universe,
+.design-lab-graph-cluster-stage,
+.design-lab-graph-focus-stage {
+  position: relative;
+  height: min(61vh, 560px);
+  min-height: 420px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(104, 87, 223, 0.048), transparent 28%),
+    radial-gradient(rgba(104, 87, 223, 0.095) 0.62px, transparent 0.62px),
+    #fbfbfc;
+  background-size: auto, 25px 25px, auto;
+}
+
+.design-lab-semantic-canvas .design-lab-graph-universe,
+.design-lab-semantic-canvas .design-lab-graph-cluster-stage,
+.design-lab-semantic-canvas .design-lab-graph-focus-stage {
+  height: 100%;
+  min-height: 0;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(103, 86, 225, 0.055), transparent 31%),
+    rgba(255, 255, 255, 0.28);
+}
+
+.design-lab-graph-universe svg,
+.design-lab-graph-cluster-stage svg,
+.design-lab-graph-focus-stage svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.design-lab-graph-universe path,
+.design-lab-graph-cluster-stage path,
+.design-lab-graph-focus-stage path {
+  fill: none;
+  stroke: rgba(132, 122, 192, 0.24);
+  stroke-width: 1.1;
+  stroke-dasharray: 4 8;
+  animation: design-lab-semantic-flow 13s linear infinite;
+}
+
+.design-lab-graph-focus-stage path {
+  opacity: 0.54;
+}
+
+.design-lab-graph-focus-stage path.is-active {
+  opacity: 1;
+  stroke: rgba(105, 87, 232, 0.68);
+  stroke-width: 1.6;
+  animation-duration: 7s;
+}
+
+.design-lab-graph-cluster {
+  position: absolute;
+  display: grid;
+  width: 184px;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.78);
+  text-align: left;
+  box-shadow: 0 14px 34px rgba(39, 44, 53, 0.065), inset 0 0 0 1px rgba(218, 221, 228, 0.78);
+  backdrop-filter: blur(10px);
+  transition: transform 170ms cubic-bezier(.22,1,.36,1), box-shadow 170ms ease;
+}
+
+.design-lab-graph-cluster:hover {
+  transform: translateY(-3px) scale(1.015);
+  box-shadow: 0 20px 44px rgba(39, 44, 53, 0.09), inset 0 0 0 1px rgba(204, 209, 218, 0.9);
+}
+
+.design-lab-graph-cluster > i {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 34% 32%, rgba(255,255,255,0.92) 0 7%, transparent 8%),
+    radial-gradient(circle, rgba(105, 87, 232, 0.86), rgba(105, 87, 232, 0.24) 56%, rgba(105, 87, 232, 0.05) 72%);
+  box-shadow: 0 0 0 8px rgba(105, 87, 232, 0.04);
+}
+
+.design-lab-graph-cluster.is-product > i { filter: hue-rotate(18deg) saturate(.78); }
+.design-lab-graph-cluster.is-growth > i { filter: hue-rotate(92deg) saturate(.58); }
+.design-lab-graph-cluster.is-knowledge > i { filter: hue-rotate(-15deg) saturate(.8); }
+
+.design-lab-graph-cluster span {
+  min-width: 0;
+}
+
+.design-lab-graph-cluster strong,
+.design-lab-graph-cluster small {
+  display: block;
+}
+
+.design-lab-graph-cluster strong {
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.design-lab-graph-cluster small {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--lab-text-3);
+  font-size: 8.6px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.design-lab-graph-cluster b {
+  color: #727a86;
+  font: 11px "Space Grotesk", sans-serif;
+}
+
+.design-lab-graph-cluster--1 { top: 39%; left: 7%; }
+.design-lab-graph-cluster--2 { top: 14%; left: 39%; }
+.design-lab-graph-cluster--3 { top: 44%; right: 7%; }
+.design-lab-graph-cluster--4 { bottom: 10%; left: 39%; }
+
+.design-lab-graph-universe__legend {
+  position: absolute;
+  right: 18px;
+  bottom: 16px;
+  display: grid;
+  justify-items: end;
+  gap: 3px;
+  color: var(--lab-text-3);
+  font-size: 8.7px;
+}
+
+.design-lab-graph-semantic-node {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.62);
+  color: #4e5561;
+  font-size: 9.2px;
+  box-shadow: 0 6px 16px rgba(39, 44, 53, 0.035);
+  backdrop-filter: blur(8px);
+  transition: transform 150ms ease, background 150ms ease, box-shadow 150ms ease;
+}
+
+.design-lab-graph-semantic-node:hover {
+  transform: translateY(-2px);
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 10px 24px rgba(39, 44, 53, 0.07);
+}
+
+.design-lab-graph-semantic-node i {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: #8374e8;
+  box-shadow: 0 0 0 3px rgba(131, 116, 232, 0.11);
+}
+
+.design-lab-graph-semantic-node.importance-3 {
+  font-size: 10.5px;
+  font-weight: 620;
+}
+
+.design-lab-graph-semantic-node.importance-3 i {
+  width: 11px;
+  height: 11px;
+}
+
+.design-lab-graph-semantic-node.importance-1 {
+  padding: 5px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.design-lab-graph-semantic-node.importance-1 i {
+  width: 6px;
+  height: 6px;
+  background: #a9a2d9;
+  box-shadow: none;
+}
+
+.design-lab-graph-semantic-node--1 { top: 44%; left: 12%; }
+.design-lab-graph-semantic-node--2 { top: 19%; left: 37%; }
+.design-lab-graph-semantic-node--3 { top: 47%; left: 45%; }
+.design-lab-graph-semantic-node--4 { top: 19%; right: 15%; }
+.design-lab-graph-semantic-node--5 { bottom: 20%; left: 24%; }
+.design-lab-graph-semantic-node--6 { bottom: 14%; left: 48%; }
+.design-lab-graph-semantic-node--7 { bottom: 19%; right: 13%; }
+.design-lab-graph-semantic-node--8 { top: 45%; right: 4%; }
+
+.design-lab-graph-density-note {
+  position: absolute;
+  left: 18px;
+  bottom: 16px;
+  display: grid;
+  gap: 3px;
+}
+
+.design-lab-graph-density-note strong {
+  font-size: 10px;
+}
+
+.design-lab-graph-density-note span {
+  color: var(--lab-text-3);
+  font-size: 8.7px;
+}
+
+.design-lab-graph-focus-node {
+  position: absolute;
+  display: flex;
+  max-width: 220px;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.8);
+  text-align: left;
+  box-shadow: 0 10px 28px rgba(41, 45, 54, 0.055), inset 0 0 0 1px rgba(219, 222, 228, 0.8);
+  backdrop-filter: blur(9px);
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+
+.design-lab-graph-focus-node:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 34px rgba(41, 45, 54, 0.08), inset 0 0 0 1px rgba(208, 212, 220, 0.86);
+}
+
+.design-lab-graph-focus-node.is-center {
+  top: 42%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 11px 13px;
+  background: linear-gradient(100deg, rgba(242, 239, 255, 0.96), rgba(255,255,255,0.94));
+  box-shadow: 0 18px 46px rgba(73, 60, 146, 0.1), inset 0 0 0 1px rgba(202, 197, 235, 0.9);
+}
+
+.design-lab-graph-focus-node.is-center:hover {
+  transform: translate(-50%, calc(-50% - 2px));
+}
+
+.design-lab-graph-focus-node > span,
+.design-lab-graph-focus-node > i {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--lab-accent-soft);
+  color: var(--lab-accent);
+}
+
+.design-lab-graph-focus-node > i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #8a7de7;
+}
+
+.design-lab-graph-focus-node strong,
+.design-lab-graph-focus-node small {
+  display: block;
+}
+
+.design-lab-graph-focus-node strong {
+  font-size: 10.5px;
+  font-weight: 630;
+}
+
+.design-lab-graph-focus-node small {
+  margin-top: 2px;
+  color: var(--lab-text-3);
+  font-size: 8.8px;
+}
+
+.design-lab-graph-focus-node--1 { top: 19%; left: 11%; }
+.design-lab-graph-focus-node--2 { top: 20%; right: 10%; }
+.design-lab-graph-focus-node--3 { bottom: 16%; left: 12%; }
+
+.design-lab-graph-focus-stage .design-lab-graph-source--1 { right: 12%; bottom: 18%; left: auto; }
+.design-lab-graph-focus-stage .design-lab-graph-source--2 { right: 13%; bottom: 8%; }
+
+.design-lab-graph-focus-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  color: var(--lab-text-3);
+  font-size: 8.8px;
+  white-space: nowrap;
+}
+
+@keyframes design-lab-semantic-flow {
+  to { stroke-dashoffset: -60; }
+}
+
+@media (max-width: 1120px) {
+  .design-lab-graph-stage__toolbar {
+    grid-template-columns: minmax(160px, auto) minmax(0, 1fr);
+  }
+
+  .design-lab-graph-zoom-note {
+    display: none;
+  }
+
+  .design-lab-graph-cluster {
+    width: 165px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .design-lab-graph-universe path,
+  .design-lab-graph-cluster-stage path,
+  .design-lab-graph-focus-stage path {
+    animation: none;
+  }
+
+  .design-lab-graph-cluster,
+  .design-lab-graph-semantic-node,
+  .design-lab-graph-focus-node {
+    transition: none;
+  }
+}

@@ -16,7 +16,16 @@ function parentPath(item) {
   const path = item.relativePath || item.path || "";
   const parts = path.split("/");
   parts.pop();
-  return parts.join("/") || "10_raw";
+  return parts.join("/");
+}
+
+function classificationLabel(item) {
+  const values = [
+    item.domain,
+    ...(item.topics || []).slice(0, 2),
+    item.contentKind,
+  ].filter(Boolean);
+  return values.length > 0 ? values.join(" · ") : null;
 }
 
 export function MaterialDocumentRow({
@@ -42,7 +51,9 @@ export function MaterialDocumentRow({
         </span>
         <span className="material-row__identity">
           <strong>{item.title}</strong>
-          <span>{unavailable ? "原文件已移动或删除" : parentPath(item)}</span>
+          <span title={unavailable ? undefined : parentPath(item)}>
+            {unavailable ? "原文件已移动或删除" : classificationLabel(item) || parentPath(item)}
+          </span>
         </span>
       </button>
 

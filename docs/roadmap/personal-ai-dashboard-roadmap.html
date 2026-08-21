@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>个人 AI 知识库与工作台 V2.3 实施总图</title>
+<title>个人 AI 知识库与工作台 V2.5 实施总图</title>
 <style>
   :root {
     color-scheme: light;
@@ -209,8 +209,8 @@
   <header class="paw-header">
     <div class="paw-title-row">
       <div>
-        <h1>个人 AI 知识库与工作台 · V2.3</h1>
-        <p class="paw-subtitle">Dashboard 已成为唯一主界面，本地视频、抖音视频、抖音图文和公开网页共用同一采集审核出口。AI 候选摘要与抖音图文真实闭环已完成，临时视频支持人工选择保留策略，下一步接入 Markdown/TXT。</p>
+        <h1>个人 AI 知识库与工作台 · V2.5</h1>
+        <p class="paw-subtitle">采集、AI 候选摘要、人工审核和 Raw 发布闭环已稳定。P1.3.5「分类与知识浏览」核心闭环已实现；当前进入 P1.3.6「Workbench 稳定化」，先把 V7 工作台原型、统一 Inspector、知识星图、状态模型与组件结构整理成可迁移的正式前台，再进入 P1.3.7「Knowledge Work Loop」验证 Today → Focus → Review → Next 的日常知识工作闭环，之后继续 P1.4 的其他资料类型。</p>
       </div>
       <button type="button" class="btn btn-ghost" id="paw-reset" data-tooltip="清空本页保存的勾选进度">
         <i data-lucide="rotate-ccw" aria-hidden="true"></i> 重置进度
@@ -218,8 +218,8 @@
     </div>
 
     <div class="viz-grid paw-summary" aria-label="路线摘要">
-      <div class="card viz-stat"><span class="text-muted">当前基线</span><strong class="viz-stat-value">P1.4</strong><span class="text-small text-muted">接入 Markdown/TXT 文本资料</span></div>
-      <div class="card viz-stat"><span class="text-muted">路线阶段</span><strong class="viz-stat-value">6</strong><span class="text-small text-muted">已完成项与当前项分开标记</span></div>
+      <div class="card viz-stat"><span class="text-muted">当前基线</span><strong class="viz-stat-value">P1.3.6</strong><span class="text-small text-muted">Workbench V7 稳定化与迁移准备</span></div>
+      <div class="card viz-stat"><span class="text-muted">路线阶段</span><strong class="viz-stat-value">9</strong><span class="text-small text-muted">已完成项与当前项分开标记</span></div>
       <div class="card viz-stat"><span class="text-muted">具体步骤</span><strong class="viz-stat-value" id="paw-total-steps">0</strong><span class="text-small text-muted">用户与系统职责分开</span></div>
       <div class="card viz-stat"><span class="text-muted">完成进度</span><strong class="viz-stat-value" id="paw-progress-value">0%</strong><span class="text-small text-muted" id="paw-progress-label">0 / 0</span></div>
     </div>
@@ -245,7 +245,7 @@
 
   <main>
     <section class="paw-section" data-panel="overview">
-      <h2>当前主线：抖音与网页进入同一审核发布闭环</h2>
+      <h2>当前主线：先让已入库资料可分类、可浏览、可复用</h2>
       <div class="paw-flow" aria-label="知识处理闭环">
         <button type="button" class="btn btn-primary" data-arch="capture" aria-pressed="true">1. 抖音 / 网页</button>
         <button type="button" class="btn" data-arch="process" aria-pressed="false">2. 提取 / 转写</button>
@@ -298,7 +298,7 @@ D:\Personal-AI\
       <div class="paw-two" aria-label="两个本地可视化页面">
         <div>
           <h3>资料处理工作台</h3>
-          <p><code>http://127.0.0.1:8765</code></p>
+          <p><code>http://127.0.0.1:8766</code></p>
           <ul class="paw-list"><li>粘贴抖音和网页链接，或投递本地文件。</li><li>查看下载、提取、转写、重试和动态进度。</li><li>执行质量审核，并在通过后明确发布到 Vault。</li></ul>
         </div>
         <div>
@@ -309,8 +309,38 @@ D:\Personal-AI\
       </div>
 
       <div class="paw-callout">
-        <strong>2026-08-15 当前决策</strong>
-        <p>Dashboard 是唯一用户界面，原 Workbench 后端已迁入内部 Ingestion Service。发布 Raw 前增加厂商无关的 AI 候选摘要：第一版采用“生成标准提示词、交给任意 AI、粘贴并人工核对”的 ManualProvider，不安装模型、不自动外发资料；Codex、Ollama 或其他模型以后只作为可替换 Provider。PDF、Office、OCR、多智能体和自动进化继续保留，但不抢占当前主线。</p>
+        <strong>2026-08-17 当前决策</strong>
+        <p>采集闭环和 P1.3.5 分类浏览核心已经可用，P1.4 的 Markdown/TXT、音频、PDF 和 Word 继续暂缓。当前优先进入 P1.3.6：先稳定 V7 Workbench，统一来源库、知识库与知识星图的 Inspector 和选择状态，整理组件/CSS 技术债，并在不破坏现有真实功能的前提下迁移正式页面。知识星图只消费现有可追溯对象与显式关系，不提前启动 P2 的自动 Wiki 提炼、自动关系推断或向量图谱。</p>
+      </div>
+
+      <div>
+        <h2>P1.3.5 分类协议：目录负责存放，属性负责分类</h2>
+        <p class="paw-kicker">一份资料只保存一次，但可以同时出现在多个主题、用途和浏览视角中。不要为每个主题复制文件或不断增加多层目录。</p>
+        <div class="table-responsive">
+          <table class="table table-sm">
+            <thead><tr><th>属性</th><th>作用</th><th>示例 / 约束</th></tr></thead>
+            <tbody>
+              <tr><td><code>domain</code></td><td>稳定的顶层领域</td><td>固定枚举：AI与智能体、程序开发、自媒体、AI视频、小说剧本、学习考试、个人成长、其他；AI 不得自行创建新顶层领域。</td></tr>
+              <tr><td><code>topics</code></td><td>资料具体讲什么</td><td>多值列表，例如 个人知识库、MCP、Agent；允许新增，但要经过别名归一和重复检查。</td></tr>
+              <tr><td><code>content_kind</code></td><td>内容属于什么知识形态</td><td>方法、教程、案例、观点、数据、清单、参考资料等受控枚举。</td></tr>
+              <tr><td><code>use_cases</code></td><td>未来可能如何复用</td><td>多值列表，例如 项目、学习、内容创作、决策、复盘。</td></tr>
+              <tr><td><code>source_type</code></td><td>来源形式</td><td>沿用现有 local-video、douyin-video、douyin-image、web-page；它不是主题分类。</td></tr>
+              <tr><td><code>type / status</code></td><td>知识生命周期</td><td>继续沿用现有 <code>type: raw-source</code>、审核状态与 Vault layer；不为分类强行改写现有状态语义。</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="paw-callout">
+          <strong>兼容原则</strong>
+          <p>现有采集时手填的 <code>tags</code> 视为收藏上下文，不直接等同正式 <code>topics</code>。新版本应逐步写入独立的 <code>domain/topics/content_kind/use_cases</code>；历史 <code>tags</code> 只作为分类候选证据，避免把临时标签永久固化成知识分类。</p>
+        </div>
+        <div class="paw-sequence" aria-label="分类与发布顺序">
+          <div class="paw-sequence-step"><strong>1. Capture</strong><span class="text-small">收藏与原始上下文</span></div>
+          <div class="paw-sequence-step"><strong>2. Understand</strong><span class="text-small">AI 阅读正文与摘要</span></div>
+          <div class="paw-sequence-step"><strong>3. Classify</strong><span class="text-small">生成结构化分类候选</span></div>
+          <div class="paw-sequence-step"><strong>4. Confirm</strong><span class="text-small">人工确认领域与主题</span></div>
+          <div class="paw-sequence-step"><strong>5. Publish</strong><span class="text-small">写入 Raw Frontmatter</span></div>
+          <div class="paw-sequence-step"><strong>6. Browse</strong><span class="text-small">分面筛选与检索复用</span></div>
+        </div>
       </div>
     </section>
 
@@ -393,8 +423,8 @@ D:\Personal-AI\
 
     <section class="paw-section" data-panel="roadmap" hidden>
       <div>
-        <h2>V2.3 分阶段实施路线</h2>
-        <p class="paw-kicker">P1.2、AI 候选摘要、公开网页、抖音视频和抖音图文真实闭环已完成；临时视频保留策略已实现且不会静默删除。当前进入 P1.4，按最小风险顺序接入其他资料类型。</p>
+        <h2>V2.5 分阶段实施路线</h2>
+        <p class="paw-kicker">P1.2、AI 候选摘要、公开网页、抖音视频和抖音图文真实闭环已完成；P1.3.5 分类与浏览核心闭环已实现。当前进入 P1.3.6 Workbench 稳定化：先统一 Inspector、知识星图交互、状态边界、性能预算、系统诊断和前台组件结构，再迁正式页面；随后用 P1.3.7 Knowledge Work Loop 验证“已有知识能不能真正进入每日工作”，最后继续 P1.4 的其他资料类型。</p>
       </div>
       <div class="paw-phases" id="paw-phase-buttons" aria-label="选择实施阶段"></div>
       <div id="paw-phase-detail" aria-live="polite"></div>
@@ -891,19 +921,72 @@ D:\Personal-AI\
         },
         {
           id: 'p13c', label: 'P1.3-C · AI 摘要', title: '厂商无关的候选摘要闭环', period: '已完成', objective: '在发布 Raw 前生成可审阅的摘要候选，同时保持完整原文、人工审核和模型可替换性。',
-          deliverables: ['统一 SummaryProvider 合同', '标准摘要提示词', '粘贴与编辑界面', '摘要发布契约'],
-          stop: '不把实现写死到 Codex；不自动把真实资料发给第三方；没有摘要时不伪造结果；摘要不能替代全文或直接成为正式知识。',
+          deliverables: ['统一 SummaryProvider 合同', '标准摘要提示词', 'Workbench 可编辑 AI 草稿', 'ManualProvider 备用方式', '摘要发布契约'],
+          stop: 'AI 总结只能由用户明确点击触发；生成结果先进入可编辑草稿且不得自动保存；ManualProvider 继续作为厂商无关备用方式；没有摘要时不伪造结果；摘要不能替代全文或直接成为正式知识。',
           steps: [
             ['p13c-1','冻结摘要格式','确认最少需要哪些理解结果。','固定 AI 候选摘要、核心要点、建议标签、可复用方向和不确定内容五个章节。','摘要 Schema v1','缺少章节或顺序错误时不能保存。'],
-            ['p13c-2','建立 ManualProvider','选择任意 AI 作为一次测试。','Dashboard 生成带来源哈希和安全边界的标准提示词，由用户主动复制。','厂商无关提示词','系统不自动外发正文，不依赖某一模型。'],
+            ['p13c-2','建立 SummaryProvider + ManualProvider','选择受控 AI Provider 生成一次候选草稿，并验证备用方式。','用户点击后由 Workbench 调用受控 Provider 生成可编辑草稿；Provider 不可用时仍可复制带来源哈希和安全边界的标准提示词给任意 AI。','可编辑 AI 草稿 + 厂商无关备用提示词','不会后台静默发送正文；生成结果不自动保存；用户修改优先。'],
             ['p13c-3','保存候选摘要','把 AI 输出粘贴回 Dashboard。','校验、编辑并原子保存到任务 Run 目录，登记摘要哈希。','摘要任务产物','刷新或重启后摘要仍存在，原文没有被替换。'],
             ['p13c-4','接入审核门','同时查看摘要与完整正文。','新任务只有保存摘要后才能通过内容审核；拒绝和修改继续保留意见。','摘要审核门','AI 输出不能绕过人工判断。'],
             ['p13c-5','发布 Raw','确认摘要和全文都可发布。','在 04-来源资料 Markdown 中写入摘要来源、提示词版本、正文哈希和完整正文。','带摘要的 Raw','摘要可追溯，Raw 仍不是正式知识。'],
-            ['p13c-6','保留自动 Provider 接口','以后决定是否使用 Codex、Ollama 或其他模型。','自动 Provider 只实现统一合同，ManualProvider 永久作为兜底。','Provider 采用决定','删除或更换 Codex 不影响 Dashboard 与 Vault。']
+            ['p13c-6','建立可替换 Provider / Model 设置','在系统与设置中分别检查第一次资料总结和第二次知识提炼的 AI 配置。','新增本地、Git 忽略的 AI Provider 设置，只保存 Provider / Model 标识；当前 Codex CLI 可选择跟随默认或显式模型，OpenAI API / Local Provider 保持未接入并 fail closed。第二次提炼任务创建时冻结 Provider / Model，审核与确认写入不静默换模型；系统页同时提供阶段与代号说明。2026-08-19 联合定向回归 63/63，全量 Node 277/278，唯一失败为 MCP Linux 缺 Rollup 平台可选包。','AI Provider Settings v1','删除或更换模型不改变 Raw、Reader、P2、Wiki 状态机；不保存凭据；模型切换不覆盖用户已审核结果。']
           ]
         },
         {
-          id: 'p14', label: 'P1.4 · 其他资料', title: '恢复本地文档与音频处理', period: '抖音与网页稳定后', objective: '在同一候选、审核和发布协议上逐步增加 Markdown/TXT、音频、PDF 和 Word，不重新建设另一套队列。',
+          id: 'p135', label: 'P1.3.5 · 分类与浏览', title: '建立结构化分类与知识浏览器', period: '核心闭环已实现 · 待真实 Vault 验收', objective: '先解决 Raw 越积越难找的问题：为已发布来源建立稳定分类属性、AI 分类候选、人工确认和分面浏览，再继续扩展新的资料类型。',
+          deliverables: ['分类 Schema v1', 'AI 分类候选', '发布前分类确认', '未分类视图', '分面筛选与搜索', '历史 Raw 补全工具'],
+          stop: '不自动重写全部历史 Markdown，不允许 AI 自行创建顶层领域，不把采集时临时 tags 直接提升为正式 topics，不因分类失败阻断原始资料留存；分类迁移先 dry-run、可逐条确认、可回滚。',
+          steps: [
+            ['p135-1','冻结分类 Schema','确认第一版顶层领域和内容类型是否够用。','定义 domain、topics、content_kind、use_cases 四个正式分类字段及枚举/多值规则；source_type 和状态继续沿用现有字段。','Classification Schema v1','字段少而稳定；顶层 domain 不允许模型自由增殖；旧 Markdown 仍能正常索引。'],
+            ['p135-2','建立主题规范化','确认常见同义词，例如 AI/人工智能、Agent/智能体。','建立 topic alias registry 和规范化函数；新主题先查别名、大小写、空格和重复。','Topic Registry v1','同义主题不会生成多个筛选项；允许用户明确新增新主题。'],
+            ['p135-3','升级 AI 摘要合同','用一条现有网页或抖音资料验证分类结果。','在现有候选摘要之外生成独立结构化分类候选，包含 domain、topics、content_kind、use_cases、confidence 和需要人工复核项。','Classification Candidate','AI 建议与正文证据可核对；没有把建议直接写入正式 Raw。'],
+            ['p135-4','增加发布前确认','实际修改一次 AI 推荐的领域或主题。','在 PUBLISH GATE 前展示分类候选；允许选择领域、增删主题、内容类型和用途，并保存人工确认值。','分类确认 UI','用户一眼完成确认；修改 AI 建议不会改原始正文或候选摘要。'],
+            ['p135-5','写入 Raw Frontmatter','选择一条新资料完成发布。','Publisher 将人工确认后的分类字段原子写入 Markdown Frontmatter，并保持旧 source/hash/audit 字段不变。','分类化 Raw','新发布资料可以被索引读取 domain/topics/content_kind/use_cases；重复发布仍保持幂等。'],
+            ['p135-6','建立未分类视图','准备至少一条旧 Raw 和一条新 Raw。','Dashboard 统计 missing domain/topics 的来源，增加“未分类”入口和数量，不自动修改旧文件。','Unclassified Inbox','所有缺少核心分类的 Raw 都能被集中找到；分类完成后自动退出未分类视图。'],
+            ['p135-7','重构来源库浏览','确认最常用的浏览维度。','在素材/来源库增加 domain、topics、content_kind、source_type、use_cases 的分面筛选、数量统计和组合过滤；真实文件夹降为辅助视图。','Knowledge Browser v1','无需记文件路径即可按领域与主题找到资料；多个过滤条件可以叠加且结果可清空恢复。'],
+            ['p135-8','升级搜索','准备 10 个真实查询，包含主题名、专有名词和跨领域问题。','全文搜索保留，同时允许 metadata filters；结果展示命中的领域、主题、来源和知识状态。','Filtered Search v1','精确主题过滤不依赖向量库；搜索结果可以解释为什么被召回。'],
+            ['p135-9','历史 Raw 补全','选择 10-20 条已有 Raw 作为迁移样本。','生成只读分类建议与 Diff；用户批量勾选后再逐文件原子更新，保留写前快照和审计结果。','Backfill Batch v1','默认 dry-run；未批准文件零修改；失败可恢复；不改变正文和来源哈希语义。'],
+            ['p135-10','分类质量验收','随机抽查已分类资料并记录错误。','统计未分类率、人工改动率、主题重复率、查找耗时和筛选命中情况，整理 Schema 调整候选。','P1.3.5 验收报告','20 条样本中顶层领域人工认可率达到 90% 以上；重复/近义主题可控；常用资料可在 3 次交互内定位。']
+          ]
+        },
+        {
+          id: 'p136', label: 'P1.3.6 · Workbench 稳定化', title: '冻结 V7 交互模型并迁移正式前台', period: '已完成', objective: '把已验证的 V7 原型整理为可维护、可接真实数据的正式工作台：统一对象详情、知识星图交互和状态模型，清理原型技术债，再逐页迁移现有真实功能。',
+          deliverables: ['统一 Inspector', '语义星图与全量知识网络', '独立 Graph 状态模型', 'Graph Performance Budget', 'V7 组件拆分', 'V7 CSS/Token 整理', 'System Health', 'One-click Diagnostics', 'Safe Maintenance Center', '正式页面迁移计划', '真实 Graph 接入边界'],
+          stop: '不把 synthetic 原型数据冒充真实知识；不为了视觉效果提前启动 P2 自动 Wiki 抽取、自动关系推断或向量知识图谱；不在组件与样式尚未稳定时复制到所有正式页面；不破坏现有来源库、知识库和采集流程的真实能力。',
+          steps: [
+            ['p136-1','冻结 V7 视觉与交互基线','在 /design-lab 检查 Today、来源库、知识库、语义星图和全量网络。','记录已确认的布局、排版、颜色、动效与交互原则；停止继续叠加实验性主题层。','V7 Baseline','核心页面无需再次推翻；新增变化必须服务可用性、性能或真实数据接入。'],
+            ['p136-2','统一 Inspector','分别从来源、知识列表和星图选中对象。','统一对象详情模型，展示摘要、领域、类型、状态、来源、关系和相邻对象；网络节点与真实知识对象使用清楚的类型边界。','Inspector v2','三种入口选择同一真实对象时展示一致信息；synthetic 节点明确标识，不污染正式知识状态。'],
+            ['p136-3','拆分选择与视口状态','在知识库与全量网络之间来回选择对象、缩放和聚焦。','将 selectedKnowledge、selectedGraphNode、graphFocus、graphViewport 等职责分离，避免一个 state 同时承载真实知识与临时网络节点。','Graph State Model v1','切换视图不会出现错误对象详情；返回星图时焦点和视口行为可预测。'],
+            ['p136-4','稳定知识星图交互','测试滚轮缩放、拖拽、Hover、搜索、领域/类型筛选、1-3 跳关系和节点详情。','保留语义视图 Overview→Cluster→Focus，同时提供全量网络探索；优化滚动锁、焦点缩放、标签密度和大图性能。','Knowledge Graph Explorer v1','69 节点原型交互流畅；扩大样本规模后不会因标签和 React 全量重绘立即失控；搜索与关系深度结果可解释。'],
+            ['p136-4b','建立 Graph 性能预算','分别用小、中、大三档 synthetic 图谱压测缩放、拖拽、搜索与多跳关系。','Graph Performance Budget v1 已落地：支持自动/节能/平衡/高质量模式，按档位控制标签预算、刷新间隔、漂移动效、节点/关系渲染上限；当前 69/117 自动使用高质量 SVG，约 350 节点/1000 边以上建议 Canvas，约 1600 节点/5200 边以上建议 WebGL。','Graph Performance Budget v1','节点规模上升时优先降标签、边和非必要动效而不是卡住主线程；焦点、搜索命中和关系上下文优先保留；性能策略可解释、可回退，并且不删除真实关系数据。'],
+            ['p136-5','拆分 V7 组件','确认 DesignLabPage 与 GraphView 已难以继续维护。','已将 DesignLabPage 收敛为页面状态与编排层；Today/Sources/Knowledge、Inspector、CommandPalette、GraphView、NetworkGraph 与 synthetic data 已拆到独立模块，Graph 性能预算保持独立；后续 viewport / force 若继续抽 hook，不再要求回填主页面。','Workbench Component Boundary','DesignLabPage 约 235 行且不再包含 forceSimulation/NetworkGraph 实现；组件边界回归测试、Graph/UI 测试与 diff check 全部通过。'],
+            ['p136-6','整理 CSS 与 Design Tokens','盘点 design-lab 多层 CSS 的覆盖和重复。','已将稳定层收敛为 design-lab-tokens.css → design-lab.css → design-lab-workspace.css → design-lab-graph-semantic.css → design-lab-graph-network.css；原 motion/polish/fluid/composition/finish 五个实验层已按原级联顺序合并并删除，Starry 对照死样式也一并清理。','V7 Design System v1','V7 只保留 5 个稳定 CSS 层；核心 token 集中到独立 token 文件；CSS 边界、组件边界、Graph/UI 测试与 diff check 全部通过。'],
+            ['p136-7','制定并执行正式页面迁移','依次核对 /、/materials、/wiki、/graph 的真实数据与现有功能。','正式核心路由已完成 V7 迁移：Shell、Today、来源库、知识库与知识星图继续读取真实 API / Vault 数据；新增迁移边界回归测试，禁止正式页面依赖 design-lab synthetic fixtures，并保留来源筛选、知识分组、搜索、详情与 Graph 交互。','Workbench Migration','正式页面获得 V7 体验且目标回归测试通过；synthetic 数据只留在明确的设计实验/测试环境。'],
+            ['p136-8','接入真实显式关系','确认真实 Vault/索引中已有可追溯对象与关系字段。','Real Graph Adapter v1 已落地：正式 Graph 只纳入 Wiki knowledge Markdown；边仅由解析成功的 Vault wikiLinks 生成，不使用相似度、Embedding 或自动关系推断；图关系可从 Markdown 源重新解析构建。','Real Graph Adapter v1','任一正式边都来自 resolved wikiLink；synthetic Graph 与正式 Graph 保持隔离；删除派生图状态后仍可从 Markdown 源重建。'],
+            ['p136-8b','建立 System Health 与 One-click Diagnostics','模拟 Vault 不可达、Ingestion 离线、索引过期和 Graph 数据为空等状态。','System Health + One-click Diagnostics v1 已落地：/system 汇总 Vault、索引同步、Graph 规模、未分类、Ingestion、Codex 与测试/隐私扫描记录状态；/api/diagnostics 为 GET 只读检查，输出原因、影响和恢复指引。没有持久化运行记录时明确显示“未确认”，不冒充测试或隐私扫描已通过。','System Health + One-click Diagnostics v1','健康聚合与诊断边界测试通过；诊断不调用 refresh/write/spawn/Git，不返回真实 Vault 路径、来源正文或凭据；维护动作与诊断入口保持分离。'],
+            ['p136-8c','建立 Safe Maintenance Center','从诊断结果进入一个需要维护的可恢复场景。','Safe Maintenance Center v1 已落地：当前仅开放“重建 Vault 派生索引”；先通过 GET 生成 dry-run 预览，明确目标、影响、保留对象与回退方式，用户再次确认后才调用受控执行接口。未确认、未知动作或取消均零修改；删除 Vault、清理 Git、来源原件和凭据不提供入口。','Safe Maintenance Center v1','维护白名单、确认门槛和 UI 两阶段流程测试通过；正式知识与来源原件不属于维护动作的写入目标，重建失败仍由 Vault 原文件和最后可用索引提供恢复边界。'],
+            ['p136-9','Workbench 稳定化验收','使用真实来源库和知识库完成一轮日常浏览、搜索和关系探索。','P1.3.6 最终验收已完成：Hosted/public build 明确使用仓库 synthetic demo Vault，本地开发继续尊重 PERSONAL_DASHBOARD_VAULT_ROOT；MCP Linux 通过临时注入 package-lock 已锁定的 Rollup/esbuild 平台原生包完成跨平台验收，未删除或重装共享 node_modules，也未修改 package/package-lock。完整 npm test 已通过生产 build 与 182/182 Node 测试，privacy scan 同步通过。','P1.3.6 验收报告','build、reader-api、迁移边界、真实 Graph、System Health、Diagnostics、Safe Maintenance 与 privacy scan 全部通过；未发现本阶段新增回归，P1.3.6 达到稳定化门槛，可进入 P1.3.7 Knowledge Work Loop。']
+          ]
+        },
+        {
+          id: 'p137', label: 'P1.3.7 · Knowledge Work Loop', title: '把知识库变成每日可执行的知识工作台', period: '实现完成 · 待连续 3 个真实工作日验收', objective: '在不自动改写 Vault、不把 AI 建议冒充事实的前提下，把已有来源、知识对象、审核状态和关系转化为每天可处理、可复盘、可继续的知识工作循环。',
+          deliverables: ['Today Knowledge Queue', 'Focus Workspace', 'Daily Knowledge Review', 'Tomorrow Suggestions', 'Work Rules v1', 'User Override First', 'Workbench State Store'],
+          stop: '不把工作台变成通用 Todo 软件；不自动把任务完成状态写成知识事实；不允许 AI 自行修改正式知识、创建顶层分类或生成不可追溯关系；工作状态与 Vault 正式知识分离，AI 计划与复盘默认只是候选。AI 只建议；用户一旦人工修改或确认某个结果，用户决定优先，后续 AI 刷新、重算或跨日建议不得自动覆盖人工确认结果。',
+          steps: [
+            ['p137-1','定义 Knowledge Work 对象','列出实际会每天处理的知识动作。','Knowledge Work Schema v1 已落地：只从真实 Vault 索引中的显式状态派生 Work Item，覆盖待分类来源、待复核判断、孤立知识、缺失/失效证据、到期复习与显式关系候选；每项都保存真实 documentId/path、原因和触发信号。新增只读 /api/knowledge-work，当前阶段不排序、不持久化、不完成任务，也不修改 Vault。','Knowledge Work Schema v1','Work Item 模型、只读 API、正式迁移边界与真实 Graph 回归测试通过；普通生活 Todo、归档对象和没有显式问题的健康对象不会进入候选，稳定 ID 可跨索引重建复用。'],
+            ['p137-2','建立 Today 知识工作队列','打开 Today 并完成一轮真实知识处理。','Today Knowledge Queue v1 已落地：现有首页直接读取 /api/knowledge-work，按固定可解释优先级生成最多 5 项今日候选；每项展示真实来源对象、进入原因，并支持人工上移/下移、完成、稍后和跳过。人工状态保存在浏览器本地 Workbench 状态中，刷新后保留、跨本地日期自动重置，不写入 Vault；后续 p137-7 再迁移到正式 Workbench State Store。','Today Knowledge Queue v1','Today 首屏直接回答“今天最值得推进什么”；队列有限且每项都有原因，人工排序优先于默认排序；完成/跳过/稍后只改变当日工作状态，不改变知识事实。定向回归与 privacy scan 通过。'],
+            ['p137-3','建立 Focus Workspace','从 Today 选择一项待处理知识工作。','Focus Workspace v1 已落地：Today 候选进入正式 /focus/:workItemId；服务端会用当前 Vault 索引重新验证 Work Item，再返回当前对象、已解析来源证据、引用该来源的知识、一跳显式关系与待人工判断关系候选。Focus 页面可打开真实文档抽屉，完成/稍后/跳过后返回 Today，并把进入/退出/结果记录到当日日内 Workbench 状态；不新增 Vault 写接口。','Focus Workspace v1','处理一个任务时无需在多个页面来回寻找上下文；旧任务在显式触发条件消失后 fail closed；Focus 历史只记录工作过程，退出或完成不会修改未确认知识。Knowledge Work/Today/迁移/Graph 定向回归、JSX 解析与 privacy scan 通过。'],
+            ['p137-4','建立 Daily Knowledge Review','一天结束时检查今天真正发生的知识变化。','Daily Knowledge Review v1 已落地：新增正式 /review 页面，从当日 Workbench events/focusHistory 生成复盘，并用当前 /api/knowledge-work 候选做二次核验。只有“用户已标记完成且原 Work Item 显式触发条件当前确实消失”的项目才进入“已核验变化”；仍存在触发条件的完成项只算工作状态完成。Review 分开展示已核验变化、未核验完成、稍后/跳过/未处理、原始工作事件和 USER AUTHORED 人工备注；不根据文件修改时间猜测新增来源，不写 Vault。','Daily Knowledge Review v1','复盘中的系统结论可逐项回到当日 Work Item 事件与真实对象引用；当前索引核验与原始事件分栏，人工备注单独标识且只保存在日内 Workbench 状态。Daily Review/Knowledge Work/Today/迁移/Graph 共 22 个定向测试通过，相关 JSX 解析与 privacy scan 通过。'],
+            ['p137-5','生成 Tomorrow Suggestions','基于未完成工作和当日复盘生成次日建议。','Tomorrow Suggestions v1 已落地：Review 从当前仍存在的真实 Work Item 与当日 deferred / unverified completion / active / skipped 状态生成明日候选；人工复盘备注只作为上下文，不能单独生成普通 Todo。候选支持人工改写计划文字、确认、拒绝、删除与全部拒绝；人工文字与决定在同一 source day 重算时保留。只有已确认且目标日期到达时仍对应当前真实 Work Item 的条目才会被 Today 作为优先项读取，人工 Today 排序仍拥有更高优先级；全过程只写独立 Workbench 本地状态，不写 Vault。','Tomorrow Suggestions v1','明日建议不会凭空生成任务；所有条目保留真实 workItemId/documentId/path 和建议理由，用户可删除、修改或全部拒绝。人工修改不会被同日重算覆盖；未确认/已拒绝/已删除建议不会进入次日 Today。Tomorrow/Today/Review/Knowledge Work/迁移/Graph 共 28 个定向测试通过，相关 JSX 解析与 privacy scan 通过。'],
+            ['p137-6','建立可控 Work Rules','整理 5-10 条真实、长期稳定的个人知识工作原则。','Work Rules v1 已落地：新增正式 /rules 页面与独立 workbench:knowledge-work:rules:v1 本地状态，初始 6 条 Starter Rules 只来自项目已经公开冻结的知识治理边界，并明确标注不是个人记忆。规则支持可见、编辑、启停、删除与新增（最多 10 条）；删除或全部停用后不会由隐藏规则自动补位。enabledWorkRulesContext 只导出当前启用且可见的 id/title/body，Tomorrow Suggestions 保存当次 rulesContext 快照并在 Review 中展示启用/可见数量及规则标题；规则只影响 Workbench 建议上下文，不直接写 Vault。','Work Rules v1','所有长期规则都可在 /rules 检查和修改；只有启用规则会进入建议上下文，不存在额外隐式规则。人工规则修改与启停决定作为存储中的权威版本保留。Work Rules/Tomorrow/Today/Review/Knowledge Work/迁移/Graph 共 33 个定向测试通过，相关 JSX 解析与 privacy scan 通过。'],
+            ['p137-6b','落实 User Override First','先接受一条 AI 建议，再人工修改其优先级、文字、规则状态或次日安排，然后触发 AI 刷新或重新建议。','User Override First 已完成当前阶段实现：Today 人工状态与排序、Review 用户原文、Tomorrow 改写/确认/拒绝/删除、Work Rules 编辑/启停/新增均记录明确 user-source provenance；Rules 对 starter 删除保留 tombstone，UI 明确区分系统候选与用户决定，并兼容既有 localStorage 数据。同一工作周期内 save-load、刷新与重算不得静默覆盖人工决定。Today 继续保持现有按日生命周期，跨日持久化由 p137-7 Workbench State Store v1 接管。','User Override First','Today / Review / Tomorrow / Rules 定向回归与新增 userOverride/userConfirmed 回归通过，privacy scan 通过；production build 仍受 MCP Linux 缺少 @rollup/rollup-linux-x64-gnu 的既知环境问题阻塞，未删除或重装共享 node_modules。'],
+            ['p137-6c','Unified Workbench Shell + Control Center','先在 /design-lab 验证统一 Workbench Shell，再由用户决定是否迁移正式 /。','/design-lab 已形成中文视觉验收版 synthetic-only Personal AI Workbench：默认进入指挥中心，导航按工作 / 知识 / 系统收口今日、专注、复盘、明日计划、工作规则、入库、资料中心、知识库、知识图谱、系统与设置；指挥中心聚合日常工作入口，工作流页使用完整主舞台，控制中心提供系统健康 / 诊断 / 安全维护 / 接入与服务 prototype。入库页作为独立知识入口恢复，提供链接 / 文本 / 文件三种 synthetic-only 原型输入和本地演示队列，不抓取网页、不读取本地文件、不写 Vault、不调用正式 /ingestion 服务；指挥中心与命令面板都可打开该入口。星空氛围先在 Design Lab 隔离验证并按视觉验收持续收敛：指挥中心银河带集中到上半区并向下衰减，卡片更实，让星云主要从 Hero 周围、快捷入口和卡片缝隙透出；知识星图的星空不再铺满整页，只进入图谱画布，语义视图使用低密度 semantic 弱版，全量网络使用高密度 network 强版和低频流星；全量网络远景星空现在按 Graph pan/scale 做约 18% 平移和极轻缩放视差，同时普通节点进一步降亮，Hub / 当前焦点保留更明显发光层级。canvas 动效支持 reduced-motion 静态降级，不接 formal Workbench state、Vault、localStorage 或网络 API。2026-08-18 用户明确通过视觉与信息架构验收后，正式 Shell 已迁移：正式 / 为 Command Center，Today 迁到 /today；新增 /focus 选择页并保留 /focus/:workItemId，新增 /tomorrow 明日计划页；正式 AppShell 按工作 / 知识 / 系统分组，命令面板覆盖全部核心入口，正式指挥中心继续读取 loadOverview / loadGraph / loadKnowledgeWork / loadSystemHealth，Today / Focus / Review / Tomorrow / Rules 保持正式 API 与独立 Workbench state。按用户最新视觉反馈，正式 / 不再保留独立深色 CosmicCoverBackdrop 封面、“起点”大字、独立日期时间、星座入口或“进入工作台”滚动层；首页第一屏直接进入正式 Command Center，并通过共享、纯视觉的 command StarfieldBackdrop 将已验收星空降级为 Hero / 快捷入口 / 卡片缝隙中的浅色氛围层。正式 / 仍只展示真实 API / Vault / Workbench state，无真实数据时显示空状态，不使用 synthetic Today / Recent / Knowledge 指标或假 System Health 补位；User Override First 与 Vault/API 写入边界不变。正式 /graph 另有可回退 FormalGraphPage 视觉迁移，旧 GraphPage 保留。随后继续统一正式页标题、状态和 provenance 语言：资料中心、知识库、入库工作台、系统与设置，以及今日 / 专注 / 复盘 / 明日计划 / 工作规则 / 知识图谱均使用与左侧导航一致的中文主标题；资料中心与知识库原先偏展示型的 slogan Hero 已改为直接页面标题，Radar / Memory Constellation 降级为辅助信息层，900px 以下单列、680px 以下隐藏辅助可视化；Today / KnowledgeCore / Focus / Review / Tomorrow / Rules / Materials / Knowledge / Ingestion / System / Command Center 的常见状态、计数与来源提示也已统一中文优先。上述变化不改变真实 API/Vault/Workbench state、Graph、User Override First 或写入边界。','Unified Workbench Shell + Control Center','2026-08-18 最终代码级视觉/语言收口：formal migration、Design Lab boundaries、Today/Review/Tomorrow/Rules、Workbench State、p137-8 acceptance、safe maintenance 与 system health 联合定向回归 73/73 通过；src 下 85 个 JS/JSX 源文件（其中 51 个 JSX）使用现有 @babel/parser 全部解析通过，privacy scan 通过。最新全量 Node 测试为 233/234，唯一失败为 MCP Linux 缺 @rollup/rollup-linux-x64-gnu 导致 reader-api 启动 Vite 失败；npm run build 同样在 Vite 启动前被该共享可选原生包阻塞，未删除或重装共享 node_modules。正式 / 保持真实数据与空状态边界；当前可编码的 p137-6c 收口已完成。'],
+            ['p137-7','分离 Workbench State 与 Knowledge State','重启应用并跨日测试 Today、Focus 和 Review。','Workbench State Store v1 已落地：新增 workbench:knowledge-work:state:v1，按本地日期保存最多 90 个 Today / Focus history / events / Review 记录，并按 sourceDate 保存最多 90 个 Tomorrow cycles；Today 仍按当前日独立展示，但历史日记录不会因跨日切换丢失。Tomorrow 目标日读取会显式找到前一 source-day 且 targetDate=今天的周期，因此今天生成新的 Tomorrow 计划不会覆盖昨天已经人工确认、今天应生效的建议。旧 today:v1 / tomorrow:v1 localStorage 首次读取时非破坏迁移，新 Store 优先；Work Rules 保持独立长期状态。Store 只使用浏览器本地存储，不读取或写入 Vault，也不调用网络 API。','Workbench State Store v1','2026-08-18 p137-7 定向新增 5 条测试，覆盖跨日 save-load、Tomorrow 多周期/目标日读取、legacy migration、清除 Workbench lifecycle state 不触碰 Work Rules/Vault sentinel，以及 Store 无网络/Vault mutation 依赖；与 p137-6b/p137-6c 联合定向回归 57/57 通过，src 全部 JSX 使用现有 @babel/parser 纯语法解析 48/48 通过，privacy scan 通过。clearWorkbenchStateStore 只删除统一 Store 与旧 Today/Tomorrow lifecycle keys，不删除 Work Rules。p137-7 完成，下一步进入 p137-8，必须连续至少 3 个真实工作日使用后再验收。'],
+            ['p137-8','Knowledge Work Loop 验收','连续使用至少 3 个真实工作日。','验收记录基础设施已落地：Today 按日记录真实进入次数；完成数量从人工 Workbench 状态汇总；Review 由用户明确填写 1-5 复盘价值与维护分钟数；Tomorrow cycle 汇总 AI 建议确认采用率。所有记录继续保存在独立浏览器 Workbench State Store，不写 Vault；汇总器只统计记录完整的日期，并计算连续日期 streak，三条不连续记录不会被误判为连续 3 日。即使 streak 达到 3，仍明确保留“这些记录确实来自连续真实工作日、且真实闭环体验达到要求”的人工验收门槛，不能用 synthetic/unit test 自动宣告通过。','P1.3.7 验收报告（待真实连续 3 日数据）','当前工程准备与验收记录器已完成，包含不连续日期防误判回归；最终通过仍必须满足连续至少 3 个真实工作日，并人工确认 Today → Focus → Review → Next 自然闭环、没有演变成冗余任务管理器、AI 建议始终可拒绝且不越权写知识。']
+          ]
+        },
+        {
+          id: 'p14', label: 'P1.4 · 其他资料', title: '恢复本地文档与音频处理', period: 'P1.3.7 验收后', objective: '在同一候选、审核和发布协议上逐步增加 Markdown/TXT、音频、PDF 和 Word，不重新建设另一套队列。',
           deliverables: ['文本导入', '音频转写', 'PDF 文字层提取', 'Word 正文提取'],
           stop: '第一版不承诺扫描 OCR、复杂表格、公式和版式完整还原；单个适配器未验证前不批量导入。',
           steps: [
@@ -919,8 +1002,8 @@ D:\Personal-AI\
           deliverables: ['P2 准入决定', 'Raw 到 Wiki 二次审核', '概念与认知碰撞候选', '复杂文档决策', '账号数据契约', '受控自动化评测'],
           stop: '真实 Raw 尚未积累或用户尚未确认准入时，不启动自动 Wiki 抽取、认知碰撞、RSS 自动导入、自动归档、自进化和多模型路由；没有真实使用数据也不引入 Supabase、向量库、多智能体编排或无人审核自动化。',
           steps: [
-            ['p2-0','确认 P2 准入','检查已经发布的真实 Raw，并判断是否足以评测提炼质量。','汇总来源类型、审核结果、重复情况和真实复用需求，提交准入清单。','P2 准入决定','只有用户明确确认后才开始 P2；样本不足则继续积累 Raw。'],
-            ['p2-1','建立 Raw 到 Wiki 提炼','挑选真正有长期价值的 Raw。','生成带来源的概念候选、去重结果、Wiki 写入方案和差异，等待第二次人工确认。','Wiki 候选','概念可追溯且不自动写 Wiki；Raw 归档与正式知识发布边界清楚。'],
+            ['p2-0','确认 P2 准入','检查已经发布的真实 Raw，并判断是否足以评测提炼质量。','资料中心首页生成真实 Raw 准入清单：来源类型、已审核 AI 总结覆盖、分类完整度、复用信号和重复组；准入状态保存最多 20 条用户决策审计记录，并绑定真实 Raw 快照指纹；样本、摘要、分类、用途或待看信号变化后旧批准自动失效并要求重新确认。2026-08-18 用户已在资料中心明确点击“批准进入 P2”。2026-08-19 用户界面开始去工程化：主状态改为“尚未允许二次提炼 / 已允许二次提炼 / 资料有变化，需要重新确认”，统计、备注、清除决定和审计记录折叠进详情，P2 代号只作为辅助说明。','P2 准入决定','当前 p2-0 已通过用户明确批准；后续任何快照漂移、暂缓或清除决定都会重新关闭新的 Raw → Wiki 任务，普通“继续”仍不能代替新的准入确认。'],
+            ['p2-1','建立 Raw 到 Wiki 提炼','挑选真正有长期价值的 Raw。','资料中心 Reader 的“提炼为知识”已升级为受控二次提炼：前端与 `/api/wiki-ingest` 都校验 approved + userConfirmed + user provenance 和当前 Raw 快照指纹。Provider 现在支持 `codex_cli` 与 `manual` 两条受控路径：Codex 路径先 read-only 生成固定结构的“内容适配与证据边界 / 概念候选 / 去重与关联 / Wiki Diff / 不入库内容与待验证问题 / 二次确认清单”，用户可以提问或要求修订，二次确认后才进入 workspace-write；人工路径不调用模型，用户填写同样六章节，`Wiki Diff` 中只有显式“创建文件 / 更新文件 + 完整 Markdown 内容块”才可进入写入候选。人工方案二次确认后不会立刻落盘，而是冻结来源/笔记/目标文件指纹并列出即将写入的文件；用户再单独点击“执行写入 Wiki”确认后，后端才真正创建/替换当前 Vault Layout 正式 Wiki 根内的 `.md` 文件，并拒绝 Raw/Runs/越界路径、符号链接、create-existing、update-missing 和确认后的目标文件漂移。写入完成后重新核对真实文件，Job 进入 completed 并记录 deltaFiles。第二次提炼的审计历史持久化在 Runs 根的 `wiki_ingest_history`，重启 Vite 后仍可查看本轮和最近任务。对于早于第一次 AI 总结/分类流程的历史 Raw，Reader 提供自动或人工第一次总结补录与分类入口；补录只填缺失字段、不覆盖已有审核结果，并会让旧准入快照失效。2026-08-19 完成 Vault Layout 稳定化，personal-ai-vault-v1 正式链路使用 `04-来源资料 → 06-正式知识 / 08-智能体运行`。','Wiki 候选与受控写入','准入只允许开始二次提炼，不等于自动写 Wiki；每份资料仍需具体方案审核。人工与 Codex 两条路径都保持“方案审核”和“真实写入”分离。最新人工写入定向回归 21/21、Reader JSX 解析与 privacy scan 通过；Windows 实机仍需完成一次新的人工 Wiki Diff → 执行写入 → 核对 `06-正式知识` 文件差异后才能标记真实链路验收通过。'],
             ['p2-1b','评估认知碰撞与深度检查','审核两个相关但不同的概念，以及系统提出的新洞见。','生成关系、差异、假设、证据和验证方法，只作为候选；深度检查只提示，不自动裁决。','认知洞见候选','相似度不使用未经评测的固定阈值，碰撞结果必须人工审核。'],
             ['p2-2','评估复杂文档','提供扫描 PDF、PPT 或 Excel 的真实需求。','按使用价值选择 OCR、幻灯片或表格适配器，不一次全做。','适配器决策','只开发有真实样本和明确验收的类型。'],
             ['p2-3','接入本人账号数据','确认只处理本人有权访问的创作者中心。','按独立 Skill 数据契约下载官方导出并生成 30_self_media/douyin/current.json。','账号仪表盘','内容归档和账号分析不混为一类。'],
@@ -1145,12 +1228,13 @@ D:\Personal-AI\
       }
 
       const phaseButtons = root.querySelector('#paw-phase-buttons');
-      phases.forEach((phase, index) => {
+      phases.forEach((phase) => {
         const button = document.createElement('button');
         button.type = 'button';
-        button.className = `btn${index === 0 ? ' btn-primary' : ''}`;
+        const isCurrentPhase = phase.id === 'p137';
+        button.className = `btn${isCurrentPhase ? ' btn-primary' : ''}`;
         button.dataset.phase = phase.id;
-        button.setAttribute('aria-pressed', index === 0 ? 'true' : 'false');
+        button.setAttribute('aria-pressed', isCurrentPhase ? 'true' : 'false');
         button.textContent = phase.label;
         button.addEventListener('click', () => {
           setSelectedButton('[data-phase]', button);
@@ -1248,14 +1332,14 @@ D:\Personal-AI\
       root.querySelector('#paw-reset').addEventListener('click', () => {
         try { localStorage.removeItem(progressKey); } catch (_) {}
         progressState = {};
-        renderPhase(phases[0].id);
-        setSelectedButton('[data-phase]', root.querySelector('[data-phase="p12"]'));
+        renderPhase('p137');
+        setSelectedButton('[data-phase]', root.querySelector('[data-phase="p137"]'));
         updateProgress();
       });
 
       try { progressState = JSON.parse(localStorage.getItem(progressKey) || '{}'); } catch (_) { progressState = {}; }
       renderArchitecture('capture');
-      renderPhase('p12');
+      renderPhase('p137');
       renderState('source');
       renderMemoryModule('layers');
       renderDomain('dev');

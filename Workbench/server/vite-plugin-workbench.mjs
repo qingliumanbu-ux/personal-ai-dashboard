@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,10 +24,7 @@ import {
   hashReaderDocumentContent,
 } from "./reader-notes.mjs";
 import { createReaderExplanationsService } from "./reader-explanations.mjs";
-import {
-  MATERIAL_READING_STATE_PATH,
-  createMaterialReadingStateRepository,
-} from "./material-reading-state.mjs";
+import { createMaterialReadingStateRepository } from "./material-reading-state.mjs";
 import {
   materialFolderPayload,
   materialReadingQueuePayload,
@@ -48,6 +45,19 @@ import {
 import { createVaultSyncService } from "./vault-sync.mjs";
 import { loadAttentionStrategy } from "./public-config.mjs";
 import { isIngestionProxyPath } from "./ingestion-proxy.mjs";
+import { buildDiagnostics, summarizeSystemHealth } from "./system-health.mjs";
+import { maintenancePreview, validateMaintenanceExecution } from "./maintenance.mjs";
+import { knowledgeWorkCandidates, knowledgeWorkFocusContext } from "./knowledge-work.mjs";
+import { createCandidateSummaryProvider } from "./candidate-summary-provider.mjs";
+import { createAiProviderSettingsRepository } from "./ai-provider-settings.mjs";
+import { createVaultLayout } from "./vault-layout.mjs";
+import {
+  MATERIAL_REVIEW_OPTIONS,
+  buildHistoricalCandidateSummaryPrompt,
+  classificationSuggestionFromHistoricalSummary,
+  createMaterialReviewBackfillService,
+  validateHistoricalCandidateSummary,
+} from "./material-review-backfill.mjs";
 
 const workbenchRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const defaultVaultRoot = path.resolve(
@@ -68,13 +78,14 @@ const imageContentTypes = {
   webp: "image/webp",
 };
 const maximumVaultImageBytes = 8 * 1024 * 1024;
-const readerImageAllowedRoots = [
-  "10_raw",
-  "30_self_media",
-  "40_topics",
-  "50_scripts",
-  "wiki",
-];
+function layoutRoots(index) {
+  return index?.layout?.roots || {};
+}
+
+function readerImageAllowedRoots(index) {
+  const roots = layoutRoots(index);
+  return [roots.raw, roots.selfMedia, roots.topics, roots.scripts, roots.wiki].filter(Boolean);
+}
 
 function json(res, status, value) {
   res.writeHead(status, jsonHeaders);
@@ -84,9 +95,10 @@ function json(res, status, value) {
 async function serveVaultImage(res, index, vaultRoot, id) {
   const document = getDocument(index, id);
   const contentType = imageContentTypes[document?.extension];
+  const roots = layoutRoots(index);
   const isAllowedCover =
-    document?.path.startsWith("50_scripts/") ||
-    document?.path.startsWith("10_raw/books/");
+    (roots.scripts && document?.path.startsWith(`${roots.scripts}/`)) ||
+    (roots.raw && document?.path.startsWith(`${roots.raw}/books/`));
   if (
     !document ||
     document.previewKind !== "image" ||
@@ -100,7 +112,7 @@ async function serveVaultImage(res, index, vaultRoot, id) {
 
   const validated = await validateVaultSelections([document.path], {
     vaultRoot,
-    allowedRoots: ["50_scripts", "10_raw"],
+    allowedRoots: [roots.scripts, roots.raw].filter(Boolean),
   });
   const selection = validated.selections[0];
   if (
@@ -174,7 +186,7 @@ async function serveReaderImage(res, index, vaultRoot, sourceId, source) {
 
   const validated = await validateVaultSelections([document.path], {
     vaultRoot,
-    allowedRoots: readerImageAllowedRoots,
+    allowedRoots: readerImageAllowedRoots(index),
   });
   const selection = validated.selections[0];
   if (
@@ -331,6 +343,9 @@ function assertWritableApiRequest(req, url, readOnly) {
   if (req.method === "POST" && ["/api/refresh", "/api/open"].includes(url.pathname)) {
     return;
   }
+  if (req.method === "PUT" && url.pathname === "/api/ai-provider-settings") {
+    return;
+  }
   const error = new Error("当前 Dashboard 以只读模式连接 Vault，已拒绝写入请求。");
   error.code = "READ_ONLY_MODE";
   throw error;
@@ -444,12 +459,13 @@ function materialGroup(document) {
 
 function collectionPayload(index, kind) {
   if (kind === "materials") {
+    const rawRoot = index?.layout?.roots?.raw || "10_raw";
     const items = index.documents
       .filter(
         (item) =>
           item.layer === "raw" &&
-          !item.path.startsWith("10_raw/books/") &&
-          !item.path.startsWith("10_raw/social-insights/"),
+          !item.path.startsWith(`${rawRoot}/books/`) &&
+          !item.path.startsWith(`${rawRoot}/social-insights/`),
       )
       .map((item) => ({ ...item, group: materialGroup(item) }));
     const counts = Object.groupBy
@@ -762,7 +778,20 @@ function documentPayload(index, id) {
 
 function requestFilters(url) {
   const filters = {};
-  for (const key of ["layer", "kind", "section", "type", "status", "extension", "tags"]) {
+  for (const key of [
+    "layer",
+    "kind",
+    "section",
+    "type",
+    "status",
+    "extension",
+    "tags",
+    "domain",
+    "topics",
+    "contentKind",
+    "useCases",
+    "sourceType",
+  ]) {
     const values = url.searchParams.getAll(key).filter(Boolean);
     if (values.length) filters[key] = values.length === 1 ? values[0] : values;
   }
@@ -771,21 +800,47 @@ function requestFilters(url) {
   return filters;
 }
 
-function openLocalDocument(vaultRoot, document, target) {
-  const absolutePath = path.resolve(vaultRoot, document.path);
-  if (target === "finder") {
-    const child = spawn("/usr/bin/open", ["-R", absolutePath], {
+function spawnDetached(executable, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(executable, args, {
       detached: true,
       stdio: "ignore",
+      ...options,
     });
-    child.unref();
+    child.once("error", reject);
+    child.once("spawn", () => {
+      child.unref();
+      resolve();
+    });
+  });
+}
+
+async function openLocalDocument(vaultRoot, document, target) {
+  const absolutePath = path.resolve(vaultRoot, document.path);
+  if (target === "finder") {
+    if (process.platform === "win32") {
+      await spawnDetached("explorer.exe", [`/select,${absolutePath}`], { windowsHide: true });
+      return;
+    }
+    if (process.platform === "darwin") {
+      await spawnDetached("/usr/bin/open", ["-R", absolutePath]);
+      return;
+    }
+    await spawnDetached("xdg-open", [path.dirname(absolutePath)]);
     return;
   }
 
   const vaultName = path.basename(vaultRoot);
   const url = `obsidian://open?vault=${encodeURIComponent(vaultName)}&file=${encodeURIComponent(document.path)}`;
-  const child = spawn("/usr/bin/open", [url], { detached: true, stdio: "ignore" });
-  child.unref();
+  if (process.platform === "win32") {
+    await spawnDetached("rundll32.exe", ["url.dll,FileProtocolHandler", url], { windowsHide: true });
+    return;
+  }
+  if (process.platform === "darwin") {
+    await spawnDetached("/usr/bin/open", [url]);
+    return;
+  }
+  await spawnDetached("xdg-open", [url]);
 }
 
 export function workbenchApiPlugin({
@@ -793,15 +848,41 @@ export function workbenchApiPlugin({
   layoutId = "dashboard-v1",
   readOnly = false,
   readerExplanationService = null,
+  ingestionUrl = "http://127.0.0.1:8766",
 } = {}) {
   let readerNoteApiMutationQueue = Promise.resolve();
-  const readerNotes = createReaderNotesRepository({ vaultRoot });
-  const materialReadingState = createMaterialReadingStateRepository({ vaultRoot });
-  const wikiIngest = createWikiIngestRunner({ vaultRoot });
+  const vaultLayout = createVaultLayout(layoutId);
+  const vaultAllowedRoots = [
+    ...new Set(Object.values(vaultLayout.summary().roots).filter(Boolean)),
+    "Brainstorm",
+  ];
+  const rawRoot = vaultLayout.root("raw");
+  const notesDirectory = `${rawRoot}/my-thoughts/reading-notes`;
+  const readerNotes = createReaderNotesRepository({ vaultRoot, notesDirectory });
+  const materialReadingState = createMaterialReadingStateRepository({ vaultRoot, rawRoot });
+  const aiProviderSettings = createAiProviderSettingsRepository({ root: workbenchRoot });
+  const wikiIngest = createWikiIngestRunner({
+    vaultRoot,
+    rawRoot,
+    runsRoot: vaultLayout.root("runs"),
+    wikiRoot: vaultLayout.root("wiki"),
+    settingsLoader: () => aiProviderSettings.load(),
+  });
   const readerExplanations = readerExplanationService ??
-    createReaderExplanationsService({ vaultRoot });
+    createReaderExplanationsService({
+      vaultRoot,
+      storePath: `${notesDirectory}/.workbench-reader-explanations.json`,
+    });
+  const candidateSummaryProvider = createCandidateSummaryProvider({
+    settingsLoader: () => aiProviderSettings.load(),
+  });
+  const materialReviewBackfill = createMaterialReviewBackfillService({
+    vaultRoot,
+    rawRoot,
+  });
   const vaultSync = createVaultSyncService({
     vaultRoot,
+    roots: vaultLayout.summary().roots,
     buildIndex: (root) => buildVaultIndex(root, { layoutId }),
   });
   const currentIndex = () => vaultSync.currentIndex();
@@ -809,6 +890,71 @@ export function workbenchApiPlugin({
     reason: "manual",
     ...options,
   });
+
+  async function ingestionHealth() {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1500);
+    try {
+      const response = await fetch(new URL("/api/health", ingestionUrl), {
+        signal: controller.signal,
+        headers: { Accept: "application/json" },
+      });
+      if (!response.ok) return { available: false, status: `http-${response.status}` };
+      const payload = await response.json().catch(() => ({}));
+      return { available: payload?.status === "ok", status: payload?.status ?? "unknown" };
+    } catch {
+      return { available: false, status: "unreachable" };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async function systemHealthPayload() {
+    const [current, codex, ingestion] = await Promise.all([
+      currentIndex(),
+      detectCodexCli(),
+      ingestionHealth(),
+    ]);
+    const graph = graphPayload(current).stats;
+    const classification = materialsHomePayload(current, []).classification;
+    const vault = {
+      connected: true,
+      label: path.basename(vaultRoot),
+      generatedAt: current.generatedAt,
+      documents: current.stats.documents,
+      errors: current.errors.length,
+    };
+    const sync = vaultSync.getStatus();
+    const codexStatus = { available: codex.available, source: codex.source };
+    const checks = {
+      tests: { status: "unknown", detail: "当前进程没有最近测试结果记录" },
+      privacyScan: { status: "unknown", detail: "当前进程没有最近隐私扫描记录" },
+    };
+    const health = summarizeSystemHealth({
+      vault,
+      sync,
+      graph,
+      classification,
+      ingestion,
+      codex: codexStatus,
+      checks,
+    });
+    return {
+      generatedAt: new Date().toISOString(),
+      vault,
+      sync,
+      graph,
+      classification: {
+        classified: classification.classified,
+        unclassified: classification.unclassified,
+        coveragePct: classification.coveragePct,
+      },
+      ingestion,
+      codex: codexStatus,
+      checks,
+      ...health,
+    };
+  }
 
   async function indexedReaderDocument(documentId) {
     const document = documentPayload(await currentIndex(), documentId);
@@ -829,6 +975,7 @@ export function workbenchApiPlugin({
     }
     const validated = await validateVaultSelections([indexed.relativePath], {
       vaultRoot,
+      allowedRoots: vaultAllowedRoots,
     });
     const selected = validated.selections[0];
     if (!selected || selected.kind !== "file") {
@@ -933,6 +1080,7 @@ export function workbenchApiPlugin({
       });
       return createIngestSnapshot(saved, saved.notes, {
         vaultRoot,
+        notesDirectory,
         jobId: snapshotId,
       });
     });
@@ -955,7 +1103,7 @@ export function workbenchApiPlugin({
         if (job.status === WIKI_INGEST_STATUS.COMPLETED) {
           await refreshIndex({
             reason: "wiki-ingest",
-            paths: ["wiki"],
+            paths: [vaultLayout.root("wiki")],
           }).catch(() => {});
         }
       });
@@ -1013,8 +1161,99 @@ export function workbenchApiPlugin({
             return json(res, 200, overviewPayload(await currentIndex()));
           }
 
+          if (req.method === "GET" && url.pathname === "/api/knowledge-work") {
+            return json(res, 200, knowledgeWorkCandidates(await currentIndex()));
+          }
+
+          if (req.method === "GET" && url.pathname.startsWith("/api/knowledge-work/focus/")) {
+            const id = decodeURIComponent(url.pathname.slice("/api/knowledge-work/focus/".length));
+            const context = knowledgeWorkFocusContext(await currentIndex(), id);
+            if (!context) {
+              return json(res, 404, {
+                error: { message: "该知识工作已不存在或当前不再需要处理。" },
+              });
+            }
+            return json(res, 200, context);
+          }
+
           if (req.method === "GET" && url.pathname === "/api/config/attention") {
             return json(res, 200, await loadAttentionStrategy(workbenchRoot));
+          }
+
+          if (req.method === "POST" && url.pathname === "/api/candidate-summary/generate") {
+            try {
+              const body = await readJson(req);
+              const generated = await candidateSummaryProvider.generate(body?.prompt);
+              return json(res, 200, generated);
+            } catch (error) {
+              const status = error?.code === "PROVIDER_UNAVAILABLE" ? 503 : 400;
+              return json(res, status, {
+                error: {
+                  code: error?.code || "CANDIDATE_SUMMARY_FAILED",
+                  message: error?.message || "无法生成 AI 候选摘要。",
+                },
+              });
+            }
+          }
+
+          if (req.method === "POST" && url.pathname === "/api/material-review-backfill/prompt") {
+            const body = await readJson(req);
+            const document = await freshIndexedReaderDocument(body?.documentId);
+            if (document.layer !== "raw") {
+              const error = new Error("只有来源资料可以补做第一次 AI 总结。");
+              error.code = "INVALID_MATERIAL_REVIEW_SOURCE";
+              throw error;
+            }
+            const bodyText = typeof document.body === "string" ? document.body : "";
+            const sourceSha256 = createHash("sha256").update(bodyText, "utf8").digest("hex");
+            return json(res, 200, {
+              prompt: buildHistoricalCandidateSummaryPrompt({
+                sourceType: document.sourceType || document.type || "历史来源资料",
+                sourceText: bodyText,
+                sourceSha256,
+                captureReason: document.frontmatter?.capture_reason || "",
+              }),
+              options: MATERIAL_REVIEW_OPTIONS,
+            });
+          }
+
+          if (req.method === "POST" && url.pathname === "/api/material-review-backfill/validate-summary") {
+            const body = await readJson(req, 64 * 1024);
+            const content = validateHistoricalCandidateSummary(body?.content);
+            return json(res, 200, {
+              valid: true,
+              content,
+              suggestion: classificationSuggestionFromHistoricalSummary(content),
+            });
+          }
+
+          if (req.method === "POST" && url.pathname === "/api/material-review-backfill/save") {
+            const body = await readJson(req, 96 * 1024);
+            const document = await indexedReaderDocument(body?.documentId);
+            if (document.layer !== "raw") {
+              const error = new Error("只有来源资料可以补齐审核信息。");
+              error.code = "INVALID_MATERIAL_REVIEW_SOURCE";
+              throw error;
+            }
+            const saved = await materialReviewBackfill.save({
+              relativePath: document.relativePath,
+              summary: body?.summary || "",
+              classification: body?.classification || null,
+              confirm: body?.confirm === true,
+            });
+            const refreshed = await refreshIndex({
+              reason: "material-review-backfill",
+              paths: [document.relativePath],
+            });
+            const updatedDocument = await indexedReaderDocument(body?.documentId);
+            const readingState = await materialReadingState.list();
+            const currentAdmission = materialsHomePayload(await currentIndex(), readingState).p2Admission;
+            return json(res, 200, {
+              ...saved,
+              generatedAt: refreshed.generatedAt,
+              document: updatedDocument,
+              p2Admission: currentAdmission,
+            });
           }
 
           if (req.method === "GET" && url.pathname === "/api/materials") {
@@ -1040,7 +1279,7 @@ export function workbenchApiPlugin({
               materialFolderPayload(
                 current,
                 readingState,
-                url.searchParams.get("path") || "10_raw",
+                url.searchParams.get("path") || rawRoot,
               ),
             );
           }
@@ -1081,7 +1320,7 @@ export function workbenchApiPlugin({
               contentHash: document.contentHash,
               contentFingerprint: `${document.sizeBytes ?? "unknown"}:${document.modifiedAt ?? "unknown"}`,
             });
-            vaultSync.notifyPaths([MATERIAL_READING_STATE_PATH]);
+            vaultSync.notifyPaths([materialReadingState.storePath]);
             return json(res, 200, item);
           }
 
@@ -1091,7 +1330,7 @@ export function workbenchApiPlugin({
           if (req.method === "DELETE" && materialQueueMatch) {
             const documentId = decodeURIComponent(materialQueueMatch[1]);
             const removed = await materialReadingState.remove({ documentId });
-            if (removed) vaultSync.notifyPaths([MATERIAL_READING_STATE_PATH]);
+            if (removed) vaultSync.notifyPaths([materialReadingState.storePath]);
             return json(res, 200, { removed });
           }
 
@@ -1331,13 +1570,39 @@ export function workbenchApiPlugin({
             const body = await readJson(req);
             const document = await indexedReaderDocument(body.documentId);
             if (document.layer !== "raw") {
-              const error = new Error("只有素材层（10_raw）的文档可以进入正式 Wiki Ingest。");
+              const error = new Error(`只有素材层（${rawRoot}）的文档可以进入正式 Wiki Ingest。`);
               error.code = "INVALID_INGEST_SOURCE";
               throw error;
             }
             if (typeof document.body !== "string" || !document.body.trim()) {
               const error = new Error("当前来源没有可可靠读取的文本正文，不能开始入库评估。");
               error.code = "INVALID_INGEST_SOURCE";
+              throw error;
+            }
+
+            const [current, readingState] = await Promise.all([
+              currentIndex(),
+              materialReadingState.list(),
+            ]);
+            const currentAdmission = materialsHomePayload(current, readingState).p2Admission;
+            const admission = body?.p2Admission;
+            const approved =
+              admission?.decision === "approved" &&
+              admission?.userConfirmed === true &&
+              admission?.source === "user";
+            if (!approved) {
+              const error = new Error("P2 尚未经过当前用户明确批准，不能开始 Raw → Wiki 二次提炼。");
+              error.code = "P2_ADMISSION_REQUIRED";
+              throw error;
+            }
+            const approvedFingerprint = admission?.snapshot?.snapshotFingerprint;
+            if (
+              typeof approvedFingerprint !== "string" ||
+              !approvedFingerprint ||
+              approvedFingerprint !== currentAdmission?.snapshotFingerprint
+            ) {
+              const error = new Error("P2 批准时的真实 Raw 快照已经变化，请回到资料中心重新确认准入。");
+              error.code = "P2_ADMISSION_STALE";
               throw error;
             }
 
@@ -1349,13 +1614,14 @@ export function workbenchApiPlugin({
             });
             return json(res, 202, {
               ...job,
+              p2AdmissionFingerprint: approvedFingerprint,
               notesSnapshotPath: snapshot.relativePath,
               noteCount: snapshot.noteCount,
             });
           }
 
           if (req.method === "GET" && url.pathname === "/api/wiki-ingest/jobs") {
-            return json(res, 200, { items: wikiIngest.listJobs() });
+            return json(res, 200, { items: await wikiIngest.listJobs() });
           }
 
           if (req.method === "GET" && url.pathname === "/api/wiki-ingest/recovery") {
@@ -1363,7 +1629,7 @@ export function workbenchApiPlugin({
               url.searchParams.get("documentId"),
             );
             if (document.layer !== "raw") {
-              const error = new Error("只有素材层（10_raw）的文档可以恢复 Wiki Ingest 任务。");
+              const error = new Error(`只有素材层（${rawRoot}）的文档可以恢复 Wiki Ingest 任务。`);
               error.code = "INVALID_INGEST_SOURCE";
               throw error;
             }
@@ -1372,7 +1638,7 @@ export function workbenchApiPlugin({
           }
 
           const wikiIngestMatch = url.pathname.match(
-            /^\/api\/wiki-ingest\/jobs\/([^/]+)(?:\/(events|message|handoff|confirm|cancel))?$/,
+            /^\/api\/wiki-ingest\/jobs\/([^/]+)(?:\/(events|message|manual-plan|manual-write|handoff|confirm|cancel))?$/,
           );
           if (wikiIngestMatch) {
             const jobId = decodeURIComponent(wikiIngestMatch[1]);
@@ -1386,6 +1652,20 @@ export function workbenchApiPlugin({
                 ? wikiIngest.queryJob(jobId, { message: body.message })
                 : wikiIngest.reviseJob(jobId, { message: body.message });
               return json(res, 202, job);
+            }
+            if (req.method === "POST" && action === "manual-plan") {
+              const body = await readJson(req, 256 * 1024);
+              return json(res, 200, await wikiIngest.setManualPlan(jobId, body));
+            }
+            if (req.method === "POST" && action === "manual-write") {
+              const job = await wikiIngest.executeManualWrite(jobId);
+              if (job.status === WIKI_INGEST_STATUS.COMPLETED) {
+                await refreshIndex({
+                  reason: "manual-wiki-ingest",
+                  paths: [vaultLayout.root("wiki")],
+                }).catch(() => {});
+              }
+              return json(res, job.status === WIKI_INGEST_STATUS.COMPLETED ? 200 : 202, job);
             }
             if (req.method === "POST" && action === "confirm") {
               const body = await readJson(req, 256 * 1024);
@@ -1557,6 +1837,72 @@ export function workbenchApiPlugin({
             });
           }
 
+          if (req.method === "GET" && url.pathname === "/api/system-health") {
+            return json(res, 200, await systemHealthPayload());
+          }
+
+          if (req.method === "GET" && url.pathname === "/api/ai-provider-settings") {
+            return json(res, 200, await aiProviderSettings.load());
+          }
+
+          if (req.method === "PUT" && url.pathname === "/api/ai-provider-settings") {
+            try {
+              const body = await readJson(req);
+              return json(res, 200, await aiProviderSettings.save(body));
+            } catch (error) {
+              return json(res, 400, {
+                error: {
+                  code: error?.code || "AI_SETTINGS_SAVE_FAILED",
+                  message: error?.message || "无法保存 AI Provider 设置。",
+                },
+              });
+            }
+          }
+
+          if (req.method === "GET" && url.pathname === "/api/diagnostics") {
+            const health = await systemHealthPayload();
+            return json(res, 200, {
+              generatedAt: health.generatedAt,
+              overall: health.overall,
+              readOnly: true,
+              findings: buildDiagnostics(health),
+            });
+          }
+
+          if (req.method === "GET" && url.pathname === "/api/maintenance/preview") {
+            try {
+              return json(res, 200, maintenancePreview(url.searchParams.get("action")));
+            } catch (error) {
+              return json(res, 400, {
+                error: { code: error.code || "INVALID_MAINTENANCE_ACTION", message: error.message },
+              });
+            }
+          }
+
+          if (req.method === "POST" && url.pathname === "/api/maintenance/execute") {
+            try {
+              const body = await readJson(req);
+              const preview = validateMaintenanceExecution(body);
+              if (preview.action !== "rebuild-index") {
+                return json(res, 400, {
+                  error: { code: "MAINTENANCE_ACTION_NOT_ALLOWED", message: "不支持的维护动作。" },
+                });
+              }
+              const refreshed = await refreshIndex({ reason: "maintenance-confirmed" });
+              return json(res, 200, {
+                ok: true,
+                action: preview.action,
+                generatedAt: refreshed.generatedAt,
+                errors: refreshed.errors.length,
+                sync: vaultSync.getStatus(),
+              });
+            } catch (error) {
+              return json(res, 400, {
+                error: { code: error.code || "MAINTENANCE_FAILED", message: error.message },
+              });
+            }
+          }
+
           if (req.method === "POST" && url.pathname === "/api/open") {
             const body = await readJson(req);
             const current = await currentIndex();
@@ -1565,7 +1911,7 @@ export function workbenchApiPlugin({
             if (!["obsidian", "finder"].includes(body.target)) {
               return json(res, 400, { error: { message: "不支持的打开方式。" } });
             }
-            openLocalDocument(vaultRoot, document, body.target);
+            await openLocalDocument(vaultRoot, document, body.target);
             return json(res, 200, { ok: true });
           }
 

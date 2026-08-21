@@ -106,8 +106,7 @@ export function vaultPathCandidates(currentPath = "", rawTarget = "") {
   const target = normalizeObsidianTarget(rawTarget);
   if (!target) return [];
 
-  const topLevel = /^(10_raw|30_self_media|40_topics|50_scripts|wiki)\//.test(target);
-  const base = topLevel ? target : `${currentPath.split("/").slice(0, -1).join("/")}/${target}`;
+  const base = `${currentPath.split("/").slice(0, -1).join("/")}/${target}`;
   const segments = [];
 
   for (const segment of base.split("/")) {

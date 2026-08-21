@@ -289,3 +289,30 @@ test("keeps Codex explanations separate from user-authored judgments in ingest s
   assert.match(markdown, /#### Codex 辅助解释/);
   assert.doesNotMatch(markdown, /#### 我的笔记/);
 });
+
+test("personal-ai-vault-v1 reader notes and ingest snapshots stay under 04-来源资料", async (t) => {
+  const vaultRoot = await mkdtemp(path.join(os.tmpdir(), "workbench-reader-notes-formal-"));
+  t.after(() => rm(vaultRoot, { recursive: true, force: true }));
+  await mkdir(path.join(vaultRoot, "04-来源资料", "文章"), { recursive: true });
+  const notesDirectory = "04-来源资料/my-thoughts/reading-notes";
+  const repository = createReaderNotesRepository({ vaultRoot, notesDirectory });
+  const saved = await repository.save({
+    ...documentRecord(),
+    relativePath: "04-来源资料/文章/source.md",
+    title: "正式布局来源",
+  });
+
+  const snapshot = await createIngestSnapshot(saved, saved.notes, {
+    vaultRoot,
+    notesDirectory,
+    jobId: "formal-layout",
+    now: new Date("2026-08-19T00:00:00.000Z"),
+  });
+
+  assert.match(snapshot.relativePath, /^04-来源资料\/my-thoughts\/reading-notes\//);
+  assert.equal(snapshot.relativePath.includes("10_raw"), false);
+  assert.equal(
+    await readFile(path.join(vaultRoot, notesDirectory, ".workbench-reader-notes.json"), "utf8").then(Boolean),
+    true,
+  );
+});
